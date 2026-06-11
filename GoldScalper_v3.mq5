@@ -602,9 +602,8 @@ void CleanChartObjects()
    }
 }
 
-// Recalculate the basket close price and push it to all open positions on one side.
-// Basket TP = (Σ lots_i × open_i + TargetProfitUSD / contractSize) / Σ lots_i
-// This moves the visible TP line down each time a new recovery level is added.
+// Set TP on every position in the basket to g_lastBuyEntry / g_lastSellEntry.
+// When price returns to that level MT5 closes all positions natively.
 void UpdateBasketTPs(ENUM_POSITION_TYPE side)
 {
    double totalLots = 0, lotPriceSum = 0;
@@ -621,11 +620,18 @@ void UpdateBasketTPs(ENUM_POSITION_TYPE side)
    }
    if (totalLots == 0) return;
 
-   // Recovery basket (2+ positions): TP at weighted-avg entry (breakeven close)
-   // Single position: TP at entry + TargetProfitUSD (normal profit target)
-   double sign   = (side == POSITION_TYPE_BUY) ? 1.0 : -1.0;
-   double offset = (posCount > 1) ? 0.05 : TargetProfitUSD;
-   double newTP  = NormalizeDouble(lotPriceSum / totalLots + sign * offset, _Digits);
+   double newTP;
+   if (posCount > 1)
+   {
+      double lastEntry = (side == POSITION_TYPE_BUY) ? g_lastBuyEntry : g_lastSellEntry;
+      if (lastEntry == 0) return;
+      newTP = NormalizeDouble(lastEntry, _Digits);
+   }
+   else
+   {
+      double sign = (side == POSITION_TYPE_BUY) ? 1.0 : -1.0;
+      newTP = NormalizeDouble(lotPriceSum / totalLots + sign * TargetProfitUSD, _Digits);
+   }
 
    for (int i = 0; i < PositionsTotal(); i++)
    {
