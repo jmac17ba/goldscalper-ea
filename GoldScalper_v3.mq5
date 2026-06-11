@@ -1,11 +1,11 @@
 //+------------------------------------------------------------------+
-//|  GoldScalper v3.3 — Straddle + Recovery + Lifecycle Limits       |
+//|  GoldScalper v3.4 — Straddle + Recovery + Remote Kill Switch     |
 //|  Base lot 0.01 | TP $0.45 | Fib recovery | +$100/-$100 cycle     |
 //|  Hard floor -$200 → closes all positions                         |
-//|  TP tracks most-recent recovery level (basket weighted avg)      |
+//|  Telegram: /stop /pause /resume /status from your phone          |
 //+------------------------------------------------------------------+
-#property copyright "GoldScalper v3.3"
-#property version   "3.30"
+#property copyright "GoldScalper v3.4"
+#property version   "3.40"
 #property strict
 
 #include <Trade\Trade.mqh>
@@ -53,9 +53,16 @@ input double SessionProfitTarget = 100.0;   // TARGET HIT: stop EA when session 
 input double SessionLossLimit    = -150.0;  // ARISE: stop EA when session loss reaches $
 input double HardFloorUSD        = -200.0;  // Close ALL positions if equity drops this $
 
-input group "== Telegram Alerts =="
-input string TelegramToken  = "";   // paste your bot token
-input string TelegramChatId = "";   // paste your chat ID
+input group "== Telegram Remote Control =="
+input string TelegramToken  = "";   // Bot token from @BotFather
+input string TelegramChatId = "";   // Your personal chat ID
+
+input group "== Session & Volatility Filter =="
+input bool   UseSessionFilter = true;
+input int    SessionStartHour = 8;    // Server-time hour to START (default 8am = London open)
+input int    SessionEndHour   = 17;   // Server-time hour to STOP  (default 5pm = NY close)
+input bool   UseATRFilter     = true;
+input double MinATR           = 0.50; // Min ATR(14) on M15 — skip straddle if market too dead
 
 //──────────────────────────────────────────────────────────────────
 //  GLOBALS
@@ -89,6 +96,14 @@ int    g_lastSellCount      = 0;
 // When price returns here the last added position breaks even → close all
 double g_lastBuyEntry       = 0;
 double g_lastSellEntry      = 0;
+
+// Telegram remote control
+long   g_telegramOffset     = -1;   // -1 = first poll (drain old messages, don't act on them)
+bool   g_paused             = false; // /pause — halts new straddles, recovery still runs
+bool   g_killSwitch         = false; // /stop  — closes all positions, halts everything
+
+// ATR indicator handle (created once in OnInit)
+int    g_atrHandle          = INVALID_HANDLE;
 
 // Persistent cycle file (same folder as EA)
 #define CYCLE_FILE   "GoldScalper_cycles.csv"
@@ -141,27 +156,133 @@ void ClearSession()
 }
 
 //──────────────────────────────────────────────────────────────────
-//  TELEGRAM
+//  TELEGRAM — send + poll (kill switch from phone)
 //──────────────────────────────────────────────────────────────────
 
 void SendTelegram(string text)
 {
    if (TelegramToken == "" || TelegramChatId == "") return;
-
-   // Encode newlines for URL
    string body = text;
    StringReplace(body, "\n", "%0A");
    StringReplace(body, " ", "+");
    StringReplace(body, "$", "%24");
-
    string url     = "https://api.telegram.org/bot" + TelegramToken + "/sendMessage";
    string params  = "chat_id=" + TelegramChatId + "&text=" + body + "&parse_mode=HTML";
-   string headers = "Content-Type: application/x-www-form-urlencoded\r\n";
-
+   string reqHdr  = "Content-Type: application/x-www-form-urlencoded\r\n";
    char post[], result[];
    int  len = StringToCharArray(params, post, 0, WHOLE_ARRAY) - 1;
    ArrayResize(post, len);
-   WebRequest("POST", url, headers, 5000, post, result, headers);
+   string resHdr;
+   WebRequest("POST", url, reqHdr, 5000, post, result, resHdr);
+}
+
+// Simple JSON field extractor — no library needed
+string TgExtract(const string &src, const string key)
+{
+   string search = "\"" + key + "\":";
+   int pos = StringFind(src, search);
+   if (pos < 0) return "";
+   pos += StringLen(search);
+   bool isStr = (StringGetCharacter(src, pos) == '"');
+   if (isStr) pos++;
+   int end = pos, srcLen = StringLen(src);
+   while (end < srcLen)
+   {
+      ushort ch = StringGetCharacter(src, end);
+      if ( isStr && ch == '"') break;
+      if (!isStr && (ch == ',' || ch == '}' || ch == ']')) break;
+      end++;
+   }
+   return StringSubstr(src, pos, end - pos);
+}
+
+string BuildStatus()
+{
+   double equity = account.Equity();
+   double pnl    = equity - g_sessionStartEquity;
+   int    total  = g_survived + g_died;
+   double wr     = total > 0 ? (double)g_survived / total * 100 : 0;
+   string state  = g_killSwitch ? "STOPPED"
+                 : g_paused     ? "PAUSED"
+                 : g_sessionEnded ? "SESSION ENDED"
+                 : "RUNNING";
+   return StringFormat(
+      "GoldScalper v3.4\nState: %s\nEquity: $%.2f  P&L: %+.2f\n"
+      "Positions: BUY %d  SELL %d\nSurvived %d  Died %d  WR %.1f%%",
+      state, equity, pnl,
+      CountSide(POSITION_TYPE_BUY), CountSide(POSITION_TYPE_SELL),
+      g_survived, g_died, wr);
+}
+
+void TelegramPoll()
+{
+   if (TelegramToken == "" || TelegramChatId == "") return;
+
+   // g_telegramOffset == -1 on first poll: drain old messages without acting on them
+   string offsetParam = (g_telegramOffset >= 0)
+      ? "&offset=" + IntegerToString(g_telegramOffset + 1)
+      : "";
+   string url = "https://api.telegram.org/bot" + TelegramToken
+              + "/getUpdates?limit=10&timeout=0" + offsetParam;
+
+   char post[], result[];
+   string resHdr;
+   if (WebRequest("GET", url, "", 5000, post, result, resHdr) <= 0) return;
+
+   string json = CharArrayToString(result);
+   if (StringFind(json, "\"ok\":true") < 0) return;
+
+   bool firstPoll = (g_telegramOffset < 0);
+   int  from      = 0;
+
+   while (true)
+   {
+      int uidPos = StringFind(json, "\"update_id\":", from);
+      if (uidPos < 0) break;
+
+      // Extract update_id
+      long uid = StringToInteger(TgExtract(StringSubstr(json, uidPos), "update_id"));
+      if (uid > g_telegramOffset) g_telegramOffset = uid;
+
+      if (!firstPoll)
+      {
+         // Verify the message is from our authorised chat
+         int chatPos = StringFind(json, "\"chat\":", uidPos);
+         int idPos   = StringFind(json, "\"id\":", chatPos > 0 ? chatPos : uidPos);
+         string fromId = TgExtract(StringSubstr(json, idPos), "id");
+
+         if (fromId == TelegramChatId)
+         {
+            int textPos = StringFind(json, "\"text\":\"", uidPos);
+            string cmd  = (textPos > 0) ? TgExtract(StringSubstr(json, textPos), "text") : "";
+            StringToLower(cmd);
+            // Strip bot username suffix (e.g. /stop@mybotname)
+            int atPos = StringFind(cmd, "@");
+            if (atPos > 0) cmd = StringSubstr(cmd, 0, atPos);
+
+            if (cmd == "/stop")
+            {
+               g_killSwitch = true;
+               CloseAllPositions();
+               CancelPendings();
+               SendTelegram("STOPPED — all positions closed.\nRemove and re-attach EA to restart.");
+            }
+            else if (cmd == "/pause")
+            {
+               g_paused = true;
+               SendTelegram("PAUSED — no new straddles.\nRecovery and existing positions still active.\nSend /resume to continue.");
+            }
+            else if (cmd == "/resume")
+            {
+               if (g_killSwitch) SendTelegram("Cannot resume — EA was stopped. Remove and re-attach EA.");
+               else { g_paused = false; SendTelegram("RESUMED — normal operation."); }
+            }
+            else if (cmd == "/status") { SendTelegram(BuildStatus()); }
+            else if (StringLen(cmd) > 0) { SendTelegram("Commands:\n/status\n/pause\n/resume\n/stop"); }
+         }
+      }
+      from = uidPos + 1;
+   }
 }
 
 //──────────────────────────────────────────────────────────────────
@@ -187,11 +308,14 @@ int OnInit()
 
    LoadCycles();
 
+   g_atrHandle = iATR(_Symbol, PERIOD_M15, 14);
+   EventSetTimer(3);   // poll Telegram every 3 seconds
+
    int    total = g_survived + g_died;
    double wr    = total > 0 ? (double)g_survived / total * 100 : 0;
 
    string onlineMsg = StringFormat(
-      "GoldScalper v3.2 ONLINE\n"
+      "GoldScalper v3.4 ONLINE\n"
       "Starting equity: $%.2f\n"
       "Profit target: +$%.0f   Loss limit: -$%.0f   Hard floor: -$%.0f\n"
       "Survived: %d  Died: %d  Win Rate: %.1f%%",
@@ -200,25 +324,34 @@ int OnInit()
       g_survived, g_died, wr);
 
    Print(onlineMsg);
-   SendTelegram("GoldScalper v3.2 — ONLINE\n"
+   SendTelegram("GoldScalper v3.4 — ONLINE\n"
       "Starting equity: $" + DoubleToString(g_sessionStartEquity, 2) + "\n"
       "Target: +" + DoubleToString(SessionProfitTarget, 0)
       + "  Limit: -" + DoubleToString(MathAbs(SessionLossLimit), 0)
-      + "  Floor: -" + DoubleToString(MathAbs(HardFloorUSD), 0));
+      + "  Floor: -" + DoubleToString(MathAbs(HardFloorUSD), 0) + "\n"
+      "Commands: /status /pause /resume /stop");
 
    return INIT_SUCCEEDED;
 }
 
 void OnDeinit(const int reason)
 {
+   EventKillTimer();
+   if (g_atrHandle != INVALID_HANDLE) { IndicatorRelease(g_atrHandle); g_atrHandle = INVALID_HANDLE; }
    CleanChartObjects();
    double wr = (g_totalTrades > 0) ? (double)g_wins / g_totalTrades * 100 : 0;
    double pf = (g_grossLoss  != 0) ? g_grossProfit / MathAbs(g_grossLoss) : 0;
-   Print("=== v3.2 Session | Trades:", g_totalTrades,
+   Print("=== v3.4 Session | Trades:", g_totalTrades,
          " WR:", DoubleToString(wr, 1), "%",
          " PF:", DoubleToString(pf, 2),
          " Net:", DoubleToString(g_grossProfit + g_grossLoss, 2));
 }
+
+//──────────────────────────────────────────────────────────────────
+//  TIMER — Telegram poll every 3 s
+//──────────────────────────────────────────────────────────────────
+
+void OnTimer() { TelegramPoll(); }
 
 //──────────────────────────────────────────────────────────────────
 //  LIFECYCLE CHECK — runs every tick
@@ -339,11 +472,13 @@ void OnTick()
    if (curSell != g_lastSellCount) { UpdateBasketTPs(POSITION_TYPE_SELL); g_lastSellCount = curSell; }
 
    if (g_sessionEnded) return;  // no new trades after session ends
+   if (g_killSwitch)   return;  // phone kill switch fired
 
    ResetDaily();
 
    CheckRecovery();
 
+   if (g_paused) return;        // phone pause — no new straddles, recovery still runs above
    if (!PassFilters()) return;
    if (TimeCurrent() - g_lastTradeTime < TradeGapSeconds) return;
    if (CountPositions() > 0) return;
@@ -695,6 +830,37 @@ bool PassFilters()
    TimeToStruct(TimeCurrent(), dt);
    if (!TradeWeekends && (dt.day_of_week == 0 || dt.day_of_week == 6)) return false;
 
+   // Session filter — only trade between StartHour and EndHour (server time)
+   if (UseSessionFilter)
+   {
+      int  h         = dt.hour;
+      bool inSession = (SessionStartHour <= SessionEndHour)
+                     ? (h >= SessionStartHour && h < SessionEndHour)
+                     : (h >= SessionStartHour || h < SessionEndHour);
+      if (!inSession)
+      {
+         static datetime lwSess = 0;
+         if (TimeCurrent() - lwSess > 300) { Print("PAUSED: outside session (", h, "h)"); lwSess = TimeCurrent(); }
+         return false;
+      }
+   }
+
+   // ATR filter — skip straddle if market is too quiet
+   if (UseATRFilter && g_atrHandle != INVALID_HANDLE)
+   {
+      double atrBuf[];
+      if (CopyBuffer(g_atrHandle, 0, 1, 1, atrBuf) > 0 && atrBuf[0] < MinATR)
+      {
+         static datetime lwATR = 0;
+         if (TimeCurrent() - lwATR > 60)
+         {
+            Print("PAUSED: ATR ", DoubleToString(atrBuf[0], 3), " < min ", DoubleToString(MinATR, 3));
+            lwATR = TimeCurrent();
+         }
+         return false;
+      }
+   }
+
    double balance = account.Balance();
    double equity  = account.Equity();
    double dd      = (balance > 0) ? (balance - equity) / balance * 100 : 0;
@@ -791,9 +957,8 @@ void OnTradeTransaction(const MqlTradeTransaction &trans,
          " | WR:", DoubleToString(wr, 1), "%",
          " | Net: $", DoubleToString(g_grossProfit + g_grossLoss, 2));
 
-   if (profit >= 0 && !g_sessionEnded && PassFilters())
+   if (profit >= 0 && !g_sessionEnded && !g_paused && !g_killSwitch && PassFilters())
    {
-      // Re-straddle as soon as both sides are flat (no positions, no pendings)
       if (CountPositions() == 0 && CountPendings() == 0)
       {
          PlaceStraddle();
