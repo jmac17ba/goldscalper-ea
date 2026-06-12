@@ -1,7 +1,7 @@
 //+------------------------------------------------------------------+
 //|  GoldScalper v3.4 — Straddle + Recovery + Remote Kill Switch     |
-//|  Base lot 0.01 | TP $0.45 | Fib recovery | +$100/-$100 cycle     |
-//|  Hard floor -$200 → closes all positions                         |
+//|  Base lot 0.01 | Fib recovery | Runs continuously                |
+//|  Runs continuously until stopped                                 |
 //|  Telegram: /stop /pause /resume /status from your phone          |
 //+------------------------------------------------------------------+
 #property copyright "GoldScalper v3.4"
@@ -31,34 +31,31 @@ input int    MaxOpenPositions = 12;
 input group "== Recovery (Fibonacci ladder, drawdown only) =="
 input bool   UseRecovery      = true;
 input double RecoveryGapPips  = 12.0;
-input int    MaxRecoveryLevel = 6;
+input int    MaxRecoveryLevel = 7;
 
 input group "== Frequency Control =="
 input int    TradeGapSeconds  = 5;
 input bool   TradeWeekends    = false;
 
+
 input group "== Trend Filter =="
-input int    TrendLookback    = 5;    // Candles to evaluate trend
-input int    TrendMaxSame     = 4;    // Block straddle if X same-color candles in a row
-input double TrendMaxRangePips = 20.0; // Block straddle if range > X pips over lookback
+input int    TrendLookback     = 5;
+input int    TrendMaxSame      = 4;    // Block if X same-color candles in a row
+input double TrendMaxRangePips = 40.0; // Block if range > X pips over lookback
 
 input group "== Risk Management =="
 input double MaxDrawdownPct   = 20.0;
 input double MaxDailyLossPct  = 5.0;
 input bool   UseSpreadFilter  = true;
-input int    MaxSpread        = 20;
+input int    MaxSpread        = 50;
 
-input group "== Lifecycle (Cycle Limits) =="
-input double SessionProfitTarget = 100.0;   // TARGET HIT: stop EA when session gain reaches $
-input double SessionLossLimit    = -150.0;  // ARISE: stop EA when session loss reaches $
-input double HardFloorUSD        = -200.0;  // Close ALL positions if equity drops this $
 
 input group "== Telegram Remote Control =="
 input string TelegramToken  = "";   // Bot token from @BotFather
 input string TelegramChatId = "";   // Your personal chat ID
 
 input group "== Session & Volatility Filter =="
-input bool   UseSessionFilter = true;
+input bool   UseSessionFilter = false;
 input int    SessionStartHour = 8;    // Server-time hour to START (default 8am = London open)
 input int    SessionEndHour   = 17;   // Server-time hour to STOP  (default 5pm = NY close)
 input bool   UseATRFilter     = true;
@@ -81,12 +78,7 @@ datetime g_lastRecoveryBuy   = 0, g_lastRecoverySell = 0;
 int    g_totalTrades = 0, g_wins = 0, g_losses = 0;
 double g_grossProfit = 0, g_grossLoss = 0;
 
-// Lifecycle state
 double g_sessionStartEquity = 0;
-bool   g_sessionEnded       = false;
-bool   g_hardFloorAlerted   = false;
-int    g_survived           = 0;
-int    g_died               = 0;
 
 // Track position counts to detect when a new level is added
 int    g_lastBuyCount       = 0;
@@ -105,55 +97,6 @@ bool   g_killSwitch         = false; // /stop  — closes all positions, halts e
 // ATR indicator handle (created once in OnInit)
 int    g_atrHandle          = INVALID_HANDLE;
 
-// Persistent cycle file (same folder as EA)
-#define CYCLE_FILE   "GoldScalper_cycles.csv"
-#define SESSION_FILE "GoldScalper_session.csv"
-
-//──────────────────────────────────────────────────────────────────
-//  CYCLE FILE — persist survived / died across restarts
-//──────────────────────────────────────────────────────────────────
-
-void LoadCycles()
-{
-   int fh = FileOpen(CYCLE_FILE, FILE_READ | FILE_CSV | FILE_COMMON);
-   if (fh == INVALID_HANDLE) return;
-   g_survived = (int)FileReadNumber(fh);
-   g_died     = (int)FileReadNumber(fh);
-   FileClose(fh);
-}
-
-void SaveCycles()
-{
-   int fh = FileOpen(CYCLE_FILE, FILE_WRITE | FILE_CSV | FILE_COMMON);
-   if (fh == INVALID_HANDLE) return;
-   FileWrite(fh, g_survived, g_died);
-   FileClose(fh);
-}
-
-// Persist session start equity so EA reload mid-session doesn't reset the baseline
-bool LoadSession(double &equity)
-{
-   int fh = FileOpen(SESSION_FILE, FILE_READ | FILE_CSV | FILE_COMMON);
-   if (fh == INVALID_HANDLE) return false;
-   equity = FileReadNumber(fh);
-   FileClose(fh);
-   return (equity > 0);
-}
-
-void SaveSession(double equity)
-{
-   int fh = FileOpen(SESSION_FILE, FILE_WRITE | FILE_CSV | FILE_COMMON);
-   if (fh == INVALID_HANDLE) return;
-   FileWrite(fh, equity);
-   FileClose(fh);
-}
-
-void ClearSession()
-{
-   FileDelete(SESSION_FILE, FILE_COMMON);
-   g_lastBuyEntry  = 0;
-   g_lastSellEntry = 0;
-}
 
 //──────────────────────────────────────────────────────────────────
 //  TELEGRAM — send + poll (kill switch from phone)
@@ -173,7 +116,8 @@ void SendTelegram(string text)
    int  len = StringToCharArray(params, post, 0, WHOLE_ARRAY) - 1;
    ArrayResize(post, len);
    string resHdr;
-   WebRequest("POST", url, reqHdr, 5000, post, result, resHdr);
+   int rc = WebRequest("POST", url, reqHdr, 5000, post, result, resHdr);
+   Print("TG send rc=", rc, " resp=", CharArrayToString(result));
 }
 
 // Simple JSON field extractor — no library needed
@@ -200,18 +144,14 @@ string BuildStatus()
 {
    double equity = account.Equity();
    double pnl    = equity - g_sessionStartEquity;
-   int    total  = g_survived + g_died;
-   double wr     = total > 0 ? (double)g_survived / total * 100 : 0;
    string state  = g_killSwitch ? "STOPPED"
                  : g_paused     ? "PAUSED"
-                 : g_sessionEnded ? "SESSION ENDED"
                  : "RUNNING";
    return StringFormat(
       "GoldScalper v3.4\nState: %s\nEquity: $%.2f  P&L: %+.2f\n"
-      "Positions: BUY %d  SELL %d\nSurvived %d  Died %d  WR %.1f%%",
+      "Positions: BUY %d  SELL %d",
       state, equity, pnl,
-      CountSide(POSITION_TYPE_BUY), CountSide(POSITION_TYPE_SELL),
-      g_survived, g_died, wr);
+      CountSide(POSITION_TYPE_BUY), CountSide(POSITION_TYPE_SELL));
 }
 
 void TelegramPoll()
@@ -298,37 +238,14 @@ int OnInit()
    g_dayStartBalance = account.Balance();
    g_lastDayReset    = iTime(_Symbol, PERIOD_D1, 0);
 
-   // Restore session baseline if EA was reloaded mid-session
-   // In backtest mode always use fresh equity — no file persistence
-   if (MQLInfoInteger(MQL_TESTER) || !LoadSession(g_sessionStartEquity))
-   {
-      g_sessionStartEquity = account.Equity();
-      if (!MQLInfoInteger(MQL_TESTER)) SaveSession(g_sessionStartEquity);
-   }
-
-   LoadCycles();
+   g_sessionStartEquity = account.Equity();
 
    g_atrHandle = iATR(_Symbol, PERIOD_M15, 14);
    EventSetTimer(3);   // poll Telegram every 3 seconds
 
-   int    total = g_survived + g_died;
-   double wr    = total > 0 ? (double)g_survived / total * 100 : 0;
-
-   string onlineMsg = StringFormat(
-      "GoldScalper v3.4 ONLINE\n"
-      "Starting equity: $%.2f\n"
-      "Profit target: +$%.0f   Loss limit: -$%.0f   Hard floor: -$%.0f\n"
-      "Survived: %d  Died: %d  Win Rate: %.1f%%",
-      g_sessionStartEquity,
-      SessionProfitTarget, MathAbs(SessionLossLimit), MathAbs(HardFloorUSD),
-      g_survived, g_died, wr);
-
-   Print(onlineMsg);
+   Print("GoldScalper v3.4 ONLINE | Equity: $", DoubleToString(g_sessionStartEquity, 2));
    SendTelegram("GoldScalper v3.4 — ONLINE\n"
-      "Starting equity: $" + DoubleToString(g_sessionStartEquity, 2) + "\n"
-      "Target: +" + DoubleToString(SessionProfitTarget, 0)
-      + "  Limit: -" + DoubleToString(MathAbs(SessionLossLimit), 0)
-      + "  Floor: -" + DoubleToString(MathAbs(HardFloorUSD), 0) + "\n"
+      "Equity: $" + DoubleToString(g_sessionStartEquity, 2) + "\n"
       "Commands: /status /pause /resume /stop");
 
    return INIT_SUCCEEDED;
@@ -353,106 +270,6 @@ void OnDeinit(const int reason)
 
 void OnTimer() { TelegramPoll(); }
 
-//──────────────────────────────────────────────────────────────────
-//  LIFECYCLE CHECK — runs every tick
-//──────────────────────────────────────────────────────────────────
-
-void CheckLifecycle()
-{
-   if (g_sessionEnded) return;
-
-   double pnl = account.Equity() - g_sessionStartEquity;
-
-   // ── Hard floor: close everything immediately ─────────────────────
-   if (pnl <= HardFloorUSD && !g_hardFloorAlerted)
-   {
-      g_hardFloorAlerted = true;
-      g_sessionEnded     = true;
-      g_died++;
-      SaveCycles();
-      ClearSession();
-
-      CloseAllPositions();
-      CancelPendings();
-
-      int    total = g_survived + g_died;
-      double wr    = total > 0 ? (double)g_survived / total * 100 : 0;
-
-      string msg = StringFormat(
-         "HARD FLOOR — EXIT ALL\n"
-         "Session P&L: -$%.2f\n"
-         "Survived: %d  Died: %d  Win Rate: %.1f%%\n"
-         "Restart EA to begin next cycle.",
-         MathAbs(pnl), g_survived, g_died, wr);
-      Print("!!! " + msg);
-      Alert(msg);
-      SendTelegram("HARD FLOOR HIT — ALL POSITIONS CLOSED\n"
-         "Session P&amp;L: -$" + DoubleToString(MathAbs(pnl), 2) + "\n"
-         "Survived: " + IntegerToString(g_survived)
-         + "  Died: " + IntegerToString(g_died)
-         + "  WR: " + DoubleToString(wr, 1) + "%\n"
-         "Restart EA to begin next cycle.");
-      return;
-   }
-
-   // ── Profit target: stop new trades, let existing close at TP ─────
-   if (pnl >= SessionProfitTarget)
-   {
-      g_sessionEnded = true;
-      g_survived++;
-      SaveCycles();
-      ClearSession();
-      CancelPendings();
-
-      int    total = g_survived + g_died;
-      double wr    = total > 0 ? (double)g_survived / total * 100 : 0;
-
-      string msg = StringFormat(
-         "TARGET HIT\n"
-         "Session P&L: +$%.2f\n"
-         "Survived: %d  Died: %d  Win Rate: %.1f%%\n"
-         "Restart EA to begin next cycle.",
-         pnl, g_survived, g_died, wr);
-      Print(msg);
-      Alert(msg);
-      SendTelegram("TARGET HIT\n"
-         "Session P&amp;L: +$" + DoubleToString(pnl, 2) + "\n"
-         "Survived: " + IntegerToString(g_survived)
-         + "  Died: " + IntegerToString(g_died)
-         + "  WR: " + DoubleToString(wr, 1) + "%\n"
-         "Restart EA to begin next cycle.");
-      return;
-   }
-
-   // ── Loss limit: stop new trades ───────────────────────────────────
-   if (pnl <= SessionLossLimit)
-   {
-      g_sessionEnded = true;
-      g_died++;
-      SaveCycles();
-      ClearSession();
-      CancelPendings();
-
-      int    total = g_survived + g_died;
-      double wr    = total > 0 ? (double)g_survived / total * 100 : 0;
-
-      string msg = StringFormat(
-         "ARISE — lets run it back\n"
-         "Session P&L: -$%.2f\n"
-         "Survived: %d  Died: %d  Win Rate: %.1f%%\n"
-         "Restart EA to begin next cycle.",
-         MathAbs(pnl), g_survived, g_died, wr);
-      Print(msg);
-      Alert(msg);
-      SendTelegram("ARISE — lets run it back\n"
-         "Session P&amp;L: -$" + DoubleToString(MathAbs(pnl), 2) + "\n"
-         "Survived: " + IntegerToString(g_survived)
-         + "  Died: " + IntegerToString(g_died)
-         + "  WR: " + DoubleToString(wr, 1) + "%\n"
-         "Restart EA to begin next cycle.");
-      return;
-   }
-}
 
 //──────────────────────────────────────────────────────────────────
 //  TICK
@@ -460,10 +277,6 @@ void CheckLifecycle()
 
 void OnTick()
 {
-   CheckLifecycle();
-
-   // Always run basket management and TP sync — existing positions must be
-   // able to close even after the session loss limit fires.
    ManageBaskets();
 
    int curBuy  = CountSide(POSITION_TYPE_BUY);
@@ -471,8 +284,7 @@ void OnTick()
    if (curBuy  != g_lastBuyCount)  { UpdateBasketTPs(POSITION_TYPE_BUY);  g_lastBuyCount  = curBuy;  }
    if (curSell != g_lastSellCount) { UpdateBasketTPs(POSITION_TYPE_SELL); g_lastSellCount = curSell; }
 
-   if (g_sessionEnded) return;  // no new trades after session ends
-   if (g_killSwitch)   return;  // phone kill switch fired
+   if (g_killSwitch) return;
 
    ResetDaily();
 
@@ -539,17 +351,10 @@ void ManageBaskets()
       else                                              { sellPL += pl; sellN++; }
    }
 
-   // Breakeven trigger: close basket when price returns to the last recovery level entry
-   double ask = SymbolInfoDouble(_Symbol, SYMBOL_ASK);
-   double bid = SymbolInfoDouble(_Symbol, SYMBOL_BID);
-   if (buyN  > 1 && g_lastBuyEntry  > 0 && ask >= g_lastBuyEntry)
-      { CloseSide(POSITION_TYPE_BUY,  buyPL);  g_lastBuyEntry  = 0; return; }
-   if (sellN > 1 && g_lastSellEntry > 0 && bid <= g_lastSellEntry)
-      { CloseSide(POSITION_TYPE_SELL, sellPL); g_lastSellEntry = 0; return; }
+   // Close basket the moment total P&L turns positive
+   if (buyN  > 1 && buyPL  > 0) { CloseSide(POSITION_TYPE_BUY,  buyPL);  g_lastBuyEntry  = 0; return; }
+   if (sellN > 1 && sellPL > 0) { CloseSide(POSITION_TYPE_SELL, sellPL); g_lastSellEntry = 0; return; }
 
-   // Fallback: close at basket breakeven ($0 net) via individual TPs in UpdateBasketTPs
-   if (buyN  > 1 && buyPL  >= 0) CloseSide(POSITION_TYPE_BUY,  buyPL);
-   if (sellN > 1 && sellPL >= 0) CloseSide(POSITION_TYPE_SELL, sellPL);
 }
 
 void CloseSide(ENUM_POSITION_TYPE side, double netPL)
@@ -583,24 +388,28 @@ void CloseAllPositions()
 //  RECOVERY
 //──────────────────────────────────────────────────────────────────
 
+bool IsTrending()
+{
+   int    bull = 0, bear = 0;
+   double pip  = 10 * SymbolInfoDouble(_Symbol, SYMBOL_POINT);
+   for (int i = 1; i <= TrendLookback; i++)
+   {
+      double o = iOpen(_Symbol, PERIOD_M1, i), c = iClose(_Symbol, PERIOD_M1, i);
+      if (c > o) bull++; else if (c < o) bear++;
+   }
+   double hi    = iHigh(_Symbol, PERIOD_M1, iHighest(_Symbol, PERIOD_M1, MODE_HIGH, TrendLookback, 1));
+   double lo    = iLow (_Symbol, PERIOD_M1, iLowest (_Symbol, PERIOD_M1, MODE_LOW,  TrendLookback, 1));
+   double range = (hi - lo) / pip;
+   return (bull >= TrendMaxSame || bear >= TrendMaxSame || range > TrendMaxRangePips);
+}
+
 double FibLot(int level)
 {
-   static const double fib[] = {0.01, 0.02, 0.03, 0.05, 0.08, 0.13, 0.21, 0.34};
+   static const double fib[] = {0.01, 0.02, 0.03, 0.05, 0.08, 0.13, 0.22, 0.37};
    int idx = MathMin(level, ArraySize(fib) - 1);
    return NormalizeLot(fib[idx] * (BaseLot / 0.01));
 }
 
-bool TrendingAgainst(ENUM_POSITION_TYPE side)
-{
-   int same = 0;
-   for (int i = 1; i <= TrendLookback; i++)
-   {
-      double o = iOpen(_Symbol, PERIOD_M1, i), c = iClose(_Symbol, PERIOD_M1, i);
-      if (side == POSITION_TYPE_BUY  && c < o) same++;
-      if (side == POSITION_TYPE_SELL && c > o) same++;
-   }
-   return (same >= TrendMaxSame);
-}
 
 void CheckRecovery()
 {
@@ -639,26 +448,18 @@ void CheckRecovery()
        buyDD >= RecoveryGapPips &&
        TimeCurrent() - g_lastRecoveryBuy > cooldown)
    {
-      if (buyN >= 3 && TrendingAgainst(POSITION_TYPE_BUY))
-         Print("RECOVERY BUY paused — strong downtrend at level ", buyN);
-      else {
-         double lot = FibLot(buyN);
-         if (trade.Buy(lot, _Symbol, 0, 0, 0, "GS3_RB_" + IntegerToString(buyN)))
-            { Print("RECOVERY BUY lvl", buyN, " lot:", lot); g_lastRecoveryBuy = TimeCurrent(); g_lastBuyEntry = ask; }
-      }
+      double lot = FibLot(buyN);
+      if (trade.Buy(lot, _Symbol, 0, 0, 0, "GS3_RB_" + IntegerToString(buyN)))
+         { Print("RECOVERY BUY lvl", buyN, " lot:", lot); g_lastRecoveryBuy = TimeCurrent(); g_lastBuyEntry = ask; }
    }
 
    if (sellN > 0 && sellN <= MaxRecoveryLevel &&
        sellDD >= RecoveryGapPips &&
        TimeCurrent() - g_lastRecoverySell > cooldown)
    {
-      if (sellN >= 3 && TrendingAgainst(POSITION_TYPE_SELL))
-         Print("RECOVERY SELL paused — strong uptrend at level ", sellN);
-      else {
-         double lot = FibLot(sellN);
-         if (trade.Sell(lot, _Symbol, 0, 0, 0, "GS3_RS_" + IntegerToString(sellN)))
-            { Print("RECOVERY SELL lvl", sellN, " lot:", lot); g_lastRecoverySell = TimeCurrent(); g_lastSellEntry = bid; }
-      }
+      double lot = FibLot(sellN);
+      if (trade.Sell(lot, _Symbol, 0, 0, 0, "GS3_RS_" + IntegerToString(sellN)))
+         { Print("RECOVERY SELL lvl", sellN, " lot:", lot); g_lastRecoverySell = TimeCurrent(); g_lastSellEntry = bid; }
    }
 }
 
@@ -737,8 +538,6 @@ void CleanChartObjects()
    }
 }
 
-// Set TP on every position in the basket to g_lastBuyEntry / g_lastSellEntry.
-// When price returns to that level MT5 closes all positions natively.
 void UpdateBasketTPs(ENUM_POSITION_TYPE side)
 {
    double totalLots = 0, lotPriceSum = 0;
@@ -756,16 +555,18 @@ void UpdateBasketTPs(ENUM_POSITION_TYPE side)
    if (totalLots == 0) return;
 
    double newTP;
-   if (posCount > 1)
+   if (posCount == 1)
    {
-      double lastEntry = (side == POSITION_TYPE_BUY) ? g_lastBuyEntry : g_lastSellEntry;
-      if (lastEntry == 0) return;
-      newTP = NormalizeDouble(lastEntry, _Digits);
+      // Single position: fixed profit target
+      double sign = (side == POSITION_TYPE_BUY) ? 1.0 : -1.0;
+      newTP = NormalizeDouble(lotPriceSum / totalLots + sign * TargetProfitUSD, _Digits);
    }
    else
    {
-      double sign = (side == POSITION_TYPE_BUY) ? 1.0 : -1.0;
-      newTP = NormalizeDouble(lotPriceSum / totalLots + sign * TargetProfitUSD, _Digits);
+      // Recovery basket: TP = weighted average entry (breakeven point).
+      // Only set on positions where this TP is valid (above entry for buys, below for sells).
+      // OnTradeTransaction cascades the close to remaining positions when any TP fires.
+      newTP = NormalizeDouble(lotPriceSum / totalLots, _Digits);
    }
 
    for (int i = 0; i < PositionsTotal(); i++)
@@ -773,14 +574,13 @@ void UpdateBasketTPs(ENUM_POSITION_TYPE side)
       if (!posInfo.SelectByIndex(i)) continue;
       if (posInfo.Magic() != MagicNumber || posInfo.Symbol() != _Symbol) continue;
       if (posInfo.PositionType() != side) continue;
-      if (MathAbs(posInfo.TakeProfit() - newTP) > _Point)
-      {
-         if (!trade.PositionModify(posInfo.Ticket(), posInfo.StopLoss(), newTP))
-            Print("PositionModify FAILED ticket:", posInfo.Ticket(),
-                  " newTP:", DoubleToString(newTP, _Digits),
-                  " retcode:", trade.ResultRetcode(),
-                  " err:", trade.ResultComment());
-      }
+      double entry = posInfo.PriceOpen();
+      bool   valid = (posCount == 1) ||
+                     (side == POSITION_TYPE_BUY  && newTP > entry + _Point) ||
+                     (side == POSITION_TYPE_SELL && newTP < entry - _Point);
+      double tp = valid ? newTP : 0;
+      if (MathAbs(posInfo.TakeProfit() - tp) > _Point)
+         trade.PositionModify(posInfo.Ticket(), posInfo.StopLoss(), tp);
    }
    Print("Basket TP → ", DoubleToString(newTP, _Digits),
          " (", (side == POSITION_TYPE_BUY ? "BUY" : "SELL"), ")");
@@ -881,30 +681,12 @@ bool PassFilters()
 
    if (UseSpreadFilter && SymbolInfoInteger(_Symbol, SYMBOL_SPREAD) > MaxSpread) return false;
 
-   // Trend filter — skip straddle during strong directional moves
-   if (TrendLookback > 1)
+   if (TrendLookback > 1 && IsTrending())
    {
-      int    bull = 0, bear = 0;
-      double pip  = 10 * SymbolInfoDouble(_Symbol, SYMBOL_POINT);
-      for (int i = 1; i <= TrendLookback; i++)
-      {
-         double o = iOpen(_Symbol, PERIOD_M1, i), c = iClose(_Symbol, PERIOD_M1, i);
-         if (c > o) bull++; else if (c < o) bear++;
-      }
-      double hi    = iHigh(_Symbol, PERIOD_M1, iHighest(_Symbol, PERIOD_M1, MODE_HIGH, TrendLookback, 1));
-      double lo    = iLow (_Symbol, PERIOD_M1, iLowest (_Symbol, PERIOD_M1, MODE_LOW,  TrendLookback, 1));
-      double range = (hi - lo) / pip;
-
-      if (bull >= TrendMaxSame || bear >= TrendMaxSame || range > TrendMaxRangePips)
-      {
-         static datetime lwTrend = 0;
-         if (TimeCurrent() - lwTrend > 60)
-         {
-            Print("PAUSED: trend filter (↑", bull, " ↓", bear, " range:", DoubleToString(range, 1), "pip)");
-            lwTrend = TimeCurrent();
-         }
-         return false;
-      }
+      static datetime lwTrend = 0;
+      if (TimeCurrent() - lwTrend > 60)
+         { Print("PAUSED: trend filter"); lwTrend = TimeCurrent(); }
+      return false;
    }
 
    return true;
@@ -942,10 +724,21 @@ void OnTradeTransaction(const MqlTradeTransaction &trans,
       DrawEntryArrow(deal, dealType, dealPrice, dealTime);
       if (dealType == DEAL_TYPE_BUY)  UpdateBasketTPs(POSITION_TYPE_BUY);
       if (dealType == DEAL_TYPE_SELL) UpdateBasketTPs(POSITION_TYPE_SELL);
+      CancelPendings(); // kill opposite straddle leg so next bracket can fire
       return;
    }
 
    if (HistoryDealGetInteger(deal, DEAL_ENTRY) != DEAL_ENTRY_OUT) return;
+
+   // Cascade close: if other positions remain on the same side, a basket TP just fired — close them all
+   long dealType2 = HistoryDealGetInteger(deal, DEAL_TYPE);
+   ENUM_POSITION_TYPE closedSide = (dealType2 == DEAL_TYPE_SELL) ? POSITION_TYPE_BUY : POSITION_TYPE_SELL;
+   if (CountSide(closedSide) > 0)
+   {
+      CloseSide(closedSide, 0);
+      if (closedSide == POSITION_TYPE_BUY)  g_lastBuyEntry  = 0;
+      else                                   g_lastSellEntry = 0;
+   }
 
    double profit = HistoryDealGetDouble(deal, DEAL_PROFIT);
    g_totalTrades++;
@@ -957,7 +750,7 @@ void OnTradeTransaction(const MqlTradeTransaction &trans,
          " | WR:", DoubleToString(wr, 1), "%",
          " | Net: $", DoubleToString(g_grossProfit + g_grossLoss, 2));
 
-   if (profit >= 0 && !g_sessionEnded && !g_paused && !g_killSwitch && PassFilters())
+   if (profit >= 0 && !g_paused && !g_killSwitch && PassFilters())
    {
       if (CountPositions() == 0 && CountPendings() == 0)
       {
