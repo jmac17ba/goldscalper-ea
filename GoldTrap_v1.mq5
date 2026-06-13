@@ -1,0 +1,293 @@
+//+------------------------------------------------------------------+
+//|                                              GoldTrap_v1.mq5     |
+//|                          Bad Apple 17BA Enterprise               |
+//|  Reverse-engineered from account 600001050 trade history.        |
+//|  v1.3: Exclusive mode — once one side enters recovery, the       |
+//|         other side closes immediately. Fresh straddle only       |
+//|         opens after the committed side hits basket TP.           |
+//+------------------------------------------------------------------+
+#property copyright "Bad Apple 17BA Enterprise"
+#property version   "1.30"
+
+#include <Trade\Trade.mqh>
+CTrade trade;
+
+//--- Core inputs
+input double InpTPDist     = 0.40;   // TP distance in price units
+input double InpRecovGap   = 1.20;   // Gap between recovery levels
+input int    InpMaxLevels  = 8;      // Max recovery levels (1-8)
+input int    InpMagic      = 171717;
+input int    InpSlippage   = 30;
+input bool   InpEnableLogs = true;
+
+//--- Session filter (live data shows 24/5 — off by default)
+input bool   InpUseSession = false;
+input int    InpStartHour  = 1;
+input int    InpStopHour   = 23;
+
+//--- Order Block + Liquidity filter
+input bool   InpUseOBLQ      = true;
+input int    InpOBLookback   = 60;
+input double InpOBBodyRatio  = 0.55;
+input double InpOBBuffer     = 0.60;
+input int    InpLQLookback   = 40;
+input int    InpLQSwingLen   = 4;
+input double InpLQBuffer     = 0.50;
+
+const double FIBLOTS[8] = {0.01, 0.02, 0.03, 0.05, 0.08, 0.13, 0.22, 0.37};
+
+// 0 = fresh straddle  |  1 = BUY committed  |  -1 = SELL committed
+int g_committed = 0;
+
+//+------------------------------------------------------------------+
+int CountPos(ENUM_POSITION_TYPE type) {
+   int n = 0;
+   for (int i = PositionsTotal()-1; i >= 0; i--) {
+      if (!PositionSelectByTicket(PositionGetTicket(i))) continue;
+      if (PositionGetInteger(POSITION_MAGIC) != InpMagic) continue;
+      if (PositionGetString(POSITION_SYMBOL) != _Symbol) continue;
+      if ((ENUM_POSITION_TYPE)PositionGetInteger(POSITION_TYPE) == type) n++;
+   }
+   return n;
+}
+
+double AvgEntry(ENUM_POSITION_TYPE type) {
+   double sumLots = 0, sumVal = 0;
+   for (int i = PositionsTotal()-1; i >= 0; i--) {
+      if (!PositionSelectByTicket(PositionGetTicket(i))) continue;
+      if (PositionGetInteger(POSITION_MAGIC) != InpMagic) continue;
+      if (PositionGetString(POSITION_SYMBOL) != _Symbol) continue;
+      if ((ENUM_POSITION_TYPE)PositionGetInteger(POSITION_TYPE) != type) continue;
+      double lots = PositionGetDouble(POSITION_VOLUME);
+      sumLots += lots;
+      sumVal  += lots * PositionGetDouble(POSITION_PRICE_OPEN);
+   }
+   return sumLots > 0 ? sumVal / sumLots : 0;
+}
+
+double LastEntry(ENUM_POSITION_TYPE type) {
+   double   price = 0;
+   datetime lastT = 0;
+   for (int i = PositionsTotal()-1; i >= 0; i--) {
+      if (!PositionSelectByTicket(PositionGetTicket(i))) continue;
+      if (PositionGetInteger(POSITION_MAGIC) != InpMagic) continue;
+      if (PositionGetString(POSITION_SYMBOL) != _Symbol) continue;
+      if ((ENUM_POSITION_TYPE)PositionGetInteger(POSITION_TYPE) != type) continue;
+      datetime t = (datetime)PositionGetInteger(POSITION_TIME);
+      if (t >= lastT) { lastT = t; price = PositionGetDouble(POSITION_PRICE_OPEN); }
+   }
+   return price;
+}
+
+void SetBasketTP(ENUM_POSITION_TYPE type) {
+   double avg = AvgEntry(type);
+   if (avg == 0) return;
+   double tp = (type == POSITION_TYPE_BUY) ? avg + InpTPDist : avg - InpTPDist;
+   for (int i = PositionsTotal()-1; i >= 0; i--) {
+      if (!PositionSelectByTicket(PositionGetTicket(i))) continue;
+      ulong ticket = PositionGetTicket(i);
+      if (PositionGetInteger(POSITION_MAGIC) != InpMagic) continue;
+      if (PositionGetString(POSITION_SYMBOL) != _Symbol) continue;
+      if ((ENUM_POSITION_TYPE)PositionGetInteger(POSITION_TYPE) != type) continue;
+      trade.PositionModify(ticket, 0, tp);
+   }
+   if (InpEnableLogs)
+      PrintFormat("[GoldTrap] %s basket TP → %.2f (avg %.2f)",
+         type == POSITION_TYPE_BUY ? "BUY" : "SELL", tp, avg);
+}
+
+void Open(ENUM_ORDER_TYPE orderType, double lots) {
+   double price = (orderType == ORDER_TYPE_BUY)
+      ? SymbolInfoDouble(_Symbol, SYMBOL_ASK)
+      : SymbolInfoDouble(_Symbol, SYMBOL_BID);
+   double tp = (orderType == ORDER_TYPE_BUY) ? price + InpTPDist : price - InpTPDist;
+   bool ok = trade.PositionOpen(_Symbol, orderType, lots, price, 0, tp, "GoldTrap");
+   if (InpEnableLogs && ok)
+      PrintFormat("[GoldTrap] Open %s %.2f @ %.2f  TP %.2f",
+         orderType == ORDER_TYPE_BUY ? "BUY" : "SELL", lots, price, tp);
+}
+
+void CloseAllOfType(ENUM_POSITION_TYPE type) {
+   for (int i = PositionsTotal()-1; i >= 0; i--) {
+      if (!PositionSelectByTicket(PositionGetTicket(i))) continue;
+      if (PositionGetInteger(POSITION_MAGIC) != InpMagic) continue;
+      if (PositionGetString(POSITION_SYMBOL) != _Symbol) continue;
+      if ((ENUM_POSITION_TYPE)PositionGetInteger(POSITION_TYPE) == type)
+         trade.PositionClose(PositionGetTicket(i));
+   }
+}
+
+//+------------------------------------------------------------------+
+//  ORDER BLOCK DETECTION
+//+------------------------------------------------------------------+
+double NearestBearishOB(double refPrice) {
+   for (int i = 2; i < InpOBLookback - 2; i++) {
+      double o = iOpen(_Symbol,0,i), c = iClose(_Symbol,0,i);
+      double hi = iHigh(_Symbol,0,i), lo = iLow(_Symbol,0,i);
+      double range = hi - lo;
+      if (range < 0.01) continue;
+      if (c > o && (c-o)/range >= InpOBBodyRatio
+         && (iClose(_Symbol,0,i-1) < iOpen(_Symbol,0,i-1)
+          || iClose(_Symbol,0,i+1) < iOpen(_Symbol,0,i+1))
+         && hi > refPrice) return hi;
+   }
+   return 0;
+}
+
+double NearestBullishOB(double refPrice) {
+   for (int i = 2; i < InpOBLookback - 2; i++) {
+      double o = iOpen(_Symbol,0,i), c = iClose(_Symbol,0,i);
+      double hi = iHigh(_Symbol,0,i), lo = iLow(_Symbol,0,i);
+      double range = hi - lo;
+      if (range < 0.01) continue;
+      if (c < o && (o-c)/range >= InpOBBodyRatio
+         && (iClose(_Symbol,0,i-1) > iOpen(_Symbol,0,i-1)
+          || iClose(_Symbol,0,i+1) > iOpen(_Symbol,0,i+1))
+         && lo < refPrice) return lo;
+   }
+   return 0;
+}
+
+//+------------------------------------------------------------------+
+//  LIQUIDITY DETECTION
+//+------------------------------------------------------------------+
+double NearestSwingHigh(double refPrice) {
+   int limit = InpLQLookback - InpLQSwingLen;
+   for (int i = InpLQSwingLen; i < limit; i++) {
+      double hi = iHigh(_Symbol,0,i);
+      if (hi <= refPrice) continue;
+      bool isSwing = true;
+      for (int j = 1; j <= InpLQSwingLen && isSwing; j++)
+         if (iHigh(_Symbol,0,i-j) >= hi || iHigh(_Symbol,0,i+j) >= hi) isSwing = false;
+      if (isSwing) return hi;
+   }
+   return 0;
+}
+
+double NearestSwingLow(double refPrice) {
+   int limit = InpLQLookback - InpLQSwingLen;
+   for (int i = InpLQSwingLen; i < limit; i++) {
+      double lo = iLow(_Symbol,0,i);
+      if (lo >= refPrice) continue;
+      bool isSwing = true;
+      for (int j = 1; j <= InpLQSwingLen && isSwing; j++)
+         if (iLow(_Symbol,0,i-j) <= lo || iLow(_Symbol,0,i+j) <= lo) isSwing = false;
+      if (isSwing) return lo;
+   }
+   return 0;
+}
+
+bool BuyBlocked(double ask) {
+   if (!InpUseOBLQ) return false;
+   double ob = NearestBearishOB(ask);
+   if (ob > 0 && ask >= ob - InpOBBuffer) {
+      if (InpEnableLogs) PrintFormat("[GoldTrap] BUY blocked — bearish OB @ %.2f", ob);
+      return true;
+   }
+   double lq = NearestSwingHigh(ask);
+   if (lq > 0 && ask >= lq - InpLQBuffer) {
+      if (InpEnableLogs) PrintFormat("[GoldTrap] BUY blocked — swing high LQ @ %.2f", lq);
+      return true;
+   }
+   return false;
+}
+
+bool SellBlocked(double bid) {
+   if (!InpUseOBLQ) return false;
+   double ob = NearestBullishOB(bid);
+   if (ob > 0 && bid <= ob + InpOBBuffer) {
+      if (InpEnableLogs) PrintFormat("[GoldTrap] SELL blocked — bullish OB @ %.2f", ob);
+      return true;
+   }
+   double lq = NearestSwingLow(bid);
+   if (lq > 0 && bid <= lq + InpLQBuffer) {
+      if (InpEnableLogs) PrintFormat("[GoldTrap] SELL blocked — swing low LQ @ %.2f", lq);
+      return true;
+   }
+   return false;
+}
+
+//+------------------------------------------------------------------+
+int OnInit() {
+   trade.SetExpertMagicNumber(InpMagic);
+   trade.SetDeviationInPoints(InpSlippage);
+   trade.SetTypeFilling(ORDER_FILLING_IOC);
+   if (InpMaxLevels < 1 || InpMaxLevels > 8) {
+      Alert("GoldTrap: InpMaxLevels must be 1-8"); return INIT_PARAMETERS_INCORRECT;
+   }
+   PrintFormat("[GoldTrap] v1.3 — MaxLevels=%d  OB/LQ=%s  Exclusive mode ON",
+      InpMaxLevels, InpUseOBLQ ? "ON" : "OFF");
+   return INIT_SUCCEEDED;
+}
+
+//+------------------------------------------------------------------+
+void OnTick() {
+   if (InpUseSession) {
+      int h = TimeHour(TimeCurrent());
+      if (h < InpStartHour || h >= InpStopHour) return;
+   }
+
+   double ask = SymbolInfoDouble(_Symbol, SYMBOL_ASK);
+   double bid = SymbolInfoDouble(_Symbol, SYMBOL_BID);
+   int nB = CountPos(POSITION_TYPE_BUY);
+   int nS = CountPos(POSITION_TYPE_SELL);
+
+   // ── STEP 1: Detect recovery about to fire on either side ──────────
+   // In fresh mode, the moment one side needs a recovery entry we commit
+   // to that side and immediately close the other (banking its profit).
+   if (g_committed == 0) {
+      bool buyRecovNeeded  = nB > 0
+         && ask <= LastEntry(POSITION_TYPE_BUY)  - InpRecovGap
+         && !BuyBlocked(ask);
+      bool sellRecovNeeded = nS > 0
+         && bid >= LastEntry(POSITION_TYPE_SELL) + InpRecovGap
+         && !SellBlocked(bid);
+
+      if (buyRecovNeeded) {
+         g_committed = 1;
+         CloseAllOfType(POSITION_TYPE_SELL);
+         nS = 0;
+         if (InpEnableLogs) Print("[GoldTrap] BUY committed — SELL closed");
+      } else if (sellRecovNeeded) {
+         g_committed = -1;
+         CloseAllOfType(POSITION_TYPE_BUY);
+         nB = 0;
+         if (InpEnableLogs) Print("[GoldTrap] SELL committed — BUY closed");
+      }
+   }
+
+   // ── STEP 2: Basket TP hit → reset to fresh ────────────────────────
+   if (g_committed == 1 && nB == 0) {
+      g_committed = 0;
+      if (InpEnableLogs) Print("[GoldTrap] BUY basket TP hit — opening fresh straddle");
+   }
+   if (g_committed == -1 && nS == 0) {
+      g_committed = 0;
+      if (InpEnableLogs) Print("[GoldTrap] SELL basket TP hit — opening fresh straddle");
+   }
+
+   // ── STEP 3: Fresh straddle ─────────────────────────────────────────
+   // Both sides open at 0.01. Each side renews independently when its
+   // individual TP is hit (before any recovery is needed).
+   if (g_committed == 0) {
+      if (nB == 0 && !BuyBlocked(ask))  { Open(ORDER_TYPE_BUY,  FIBLOTS[0]); nB = 1; }
+      if (nS == 0 && !SellBlocked(bid)) { Open(ORDER_TYPE_SELL, FIBLOTS[0]); nS = 1; }
+      return;
+   }
+
+   // ── STEP 4: Committed recovery ────────────────────────────────────
+   if (g_committed == 1 && nB > 0 && nB < InpMaxLevels) {
+      if (ask <= LastEntry(POSITION_TYPE_BUY) - InpRecovGap && !BuyBlocked(ask)) {
+         Open(ORDER_TYPE_BUY, FIBLOTS[nB]);
+         SetBasketTP(POSITION_TYPE_BUY);
+      }
+   }
+
+   if (g_committed == -1 && nS > 0 && nS < InpMaxLevels) {
+      if (bid >= LastEntry(POSITION_TYPE_SELL) + InpRecovGap && !SellBlocked(bid)) {
+         Open(ORDER_TYPE_SELL, FIBLOTS[nS]);
+         SetBasketTP(POSITION_TYPE_SELL);
+      }
+   }
+}
+//+------------------------------------------------------------------+
