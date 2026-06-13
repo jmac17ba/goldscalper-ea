@@ -3,9 +3,12 @@
 //|  Reverse-engineered from: Abang Rimba 600001050 REAL report      |
 //|  Profile: 7274 trades/week | 66% win | 1-min hold | 0.80 lot    |
 //|  WARNING: Max drawdown on original = 55%. Use demo first.        |
+//|  v2.1: ATR auto-scaling (InpAutoScale) adapts the point distances |
+//|         to any instrument's volatility; UseRiskGuard master switch |
+//|         can disable the drawdown + daily-loss guards entirely.     |
 //+------------------------------------------------------------------+
-#property copyright "GoldScalper v2.0"
-#property version   "2.00"
+#property copyright "GoldScalper v2.1"
+#property version   "2.10"
 #property strict
 
 #include <Trade\Trade.mqh>
@@ -35,6 +38,7 @@ input int    RecoveryDistance = 10;      // Points away to place recovery order
 input int    MaxRecoveryLevel = 4;       // Max recovery layers (safety cap)
 
 input group "== Risk Management =="
+input bool   UseRiskGuard     = true;   // Master switch — turn the drawdown + daily-loss guards off completely
 input double MaxDrawdownPct   = 55.0;    // Match original (55%). Lower for safety!
 input double MaxDailyLossPct  = 15.0;   // Daily loss % cap
 input bool   UseBreakeven     = true;   // Breakeven at profit
@@ -52,6 +56,11 @@ input double RSI_OS           = 28.0;   // Oversold threshold
 input int    FastMA           = 3;      // Fast MA (very short for M1)
 input int    SlowMA           = 8;      // Slow MA
 
+input group "== Auto-Scale (per-instrument) =="
+input bool   InpAutoScale     = false;  // Scale point distances to chart volatility (ON for non-gold instruments)
+input int    InpATRPeriod     = 14;     // ATR period used for scaling
+input double InpRefATRpts     = 40.0;   // Reference ATR (in points) the fixed distances are tuned at (XAUUSD M1)
+
 //──────────────────────────────────────────────────────────────────
 //  GLOBALS
 //──────────────────────────────────────────────────────────────────
@@ -61,9 +70,33 @@ CPositionInfo posInfo;
 CAccountInfo  account;
 
 int    hFastMA, hSlowMA, hRSI;
+int    hATR = INVALID_HANDLE;
 double g_dayStartBalance = 0;
 datetime g_lastDayReset  = 0;
 datetime g_lastTradeTime = 0;
+
+// Effective (possibly auto-scaled) point distances — refreshed every tick.
+int    eTP, eSL, eRecovDist, eBE, eTrailStart, eTrailStep;
+
+void UpdateScaling()
+{
+   eTP = TakeProfit; eSL = StopLoss; eRecovDist = RecoveryDistance;
+   eBE = BreakevenTrigger; eTrailStart = TrailStart; eTrailStep = TrailStep;
+   if (!InpAutoScale || hATR == INVALID_HANDLE || InpRefATRpts <= 0) return;
+   double atr[];
+   if (CopyBuffer(hATR, 0, 0, 1, atr) > 0 && atr[0] > 0)
+   {
+      double point  = SymbolInfoDouble(_Symbol, SYMBOL_POINT);
+      double atrPts = atr[0] / point;
+      double scale  = atrPts / InpRefATRpts;
+      eTP         = (int)MathMax(1, MathRound(TakeProfit       * scale));
+      eSL         = (int)MathMax(1, MathRound(StopLoss         * scale));
+      eRecovDist  = (int)MathMax(1, MathRound(RecoveryDistance * scale));
+      eBE         = (int)MathMax(1, MathRound(BreakevenTrigger * scale));
+      eTrailStart = (int)MathMax(1, MathRound(TrailStart       * scale));
+      eTrailStep  = (int)MathMax(1, MathRound(TrailStep        * scale));
+   }
+}
 
 // Stats
 int    g_totalTrades = 0, g_wins = 0, g_losses = 0;
@@ -89,6 +122,11 @@ int OnInit()
    if (hFastMA == INVALID_HANDLE || hSlowMA == INVALID_HANDLE || hRSI == INVALID_HANDLE)
    { Print("ERROR: Indicator init failed"); return INIT_FAILED; }
 
+   hATR = iATR(_Symbol, PERIOD_M1, InpATRPeriod);
+   if (InpAutoScale && hATR == INVALID_HANDLE)
+      Print("WARN: ATR handle failed — auto-scale falls back to fixed point distances");
+   UpdateScaling();
+
    g_dayStartBalance = account.Balance();
    g_lastDayReset    = iTime(_Symbol, PERIOD_D1, 0);
 
@@ -106,6 +144,7 @@ void OnDeinit(const int reason)
    IndicatorRelease(hFastMA);
    IndicatorRelease(hSlowMA);
    IndicatorRelease(hRSI);
+   if (hATR != INVALID_HANDLE) IndicatorRelease(hATR);
 
    double wr = (g_totalTrades > 0) ? (double)g_wins / g_totalTrades * 100 : 0;
    double pf = (g_grossLoss  != 0) ? g_grossProfit / MathAbs(g_grossLoss) : 0;
@@ -122,6 +161,7 @@ void OnDeinit(const int reason)
 void OnTick()
 {
    ResetDaily();
+   UpdateScaling();
    if (!PassFilters()) return;
    ManagePositions();
 
@@ -171,14 +211,14 @@ void OpenTrade(ENUM_ORDER_TYPE type, double lot)
    if (type == ORDER_TYPE_BUY)
    {
       entry = ask;
-      sl    = NormalizeDouble(entry - StopLoss   * point, _Digits);
-      tp    = NormalizeDouble(entry + TakeProfit * point, _Digits);
+      sl    = NormalizeDouble(entry - eSL * point, _Digits);
+      tp    = NormalizeDouble(entry + eTP * point, _Digits);
    }
    else
    {
       entry = bid;
-      sl    = NormalizeDouble(entry + StopLoss   * point, _Digits);
-      tp    = NormalizeDouble(entry - TakeProfit * point, _Digits);
+      sl    = NormalizeDouble(entry + eSL * point, _Digits);
+      tp    = NormalizeDouble(entry - eTP * point, _Digits);
    }
 
    double minLot  = SymbolInfoDouble(_Symbol, SYMBOL_VOLUME_MIN);
@@ -218,28 +258,28 @@ void ManagePositions()
       if (posInfo.PositionType() == POSITION_TYPE_BUY)
       {
          double pts = (bid - openPrice) / point;
-         if (UseBreakeven && pts >= BreakevenTrigger)
+         if (UseBreakeven && pts >= eBE)
          {
             double beSL = NormalizeDouble(openPrice + point, _Digits);
             if (curSL < beSL) trade.PositionModify(ticket, beSL, curTP);
          }
-         if (UseTrailingStop && pts >= TrailStart)
+         if (UseTrailingStop && pts >= eTrailStart)
          {
-            double tSL = NormalizeDouble(bid - TrailStep * point, _Digits);
+            double tSL = NormalizeDouble(bid - eTrailStep * point, _Digits);
             if (tSL > curSL) trade.PositionModify(ticket, tSL, curTP);
          }
       }
       else
       {
          double pts = (openPrice - ask) / point;
-         if (UseBreakeven && pts >= BreakevenTrigger)
+         if (UseBreakeven && pts >= eBE)
          {
             double beSL = NormalizeDouble(openPrice - point, _Digits);
             if (curSL > beSL || curSL == 0) trade.PositionModify(ticket, beSL, curTP);
          }
-         if (UseTrailingStop && pts >= TrailStart)
+         if (UseTrailingStop && pts >= eTrailStart)
          {
-            double tSL = NormalizeDouble(ask + TrailStep * point, _Digits);
+            double tSL = NormalizeDouble(ask + eTrailStep * point, _Digits);
             if (tSL < curSL || curSL == 0) trade.PositionModify(ticket, tSL, curTP);
          }
       }
@@ -283,7 +323,7 @@ void CheckRecovery()
          recovType  = ORDER_TYPE_SELL;
       }
 
-      if (lossPoints >= RecoveryDistance)
+      if (lossPoints >= eRecovDist)
       {
          double recovLot = NormalizeDouble(posInfo.Volume() * RecoveryMultiply, 2);
          double minLot   = SymbolInfoDouble(_Symbol, SYMBOL_VOLUME_MIN);
@@ -297,14 +337,14 @@ void CheckRecovery()
          double sl, tp;
          if (recovType == ORDER_TYPE_BUY)
          {
-            sl = NormalizeDouble(entry - StopLoss   * point * (level + 2), _Digits);
-            tp = NormalizeDouble(entry + TakeProfit * point, _Digits);
+            sl = NormalizeDouble(entry - eSL * point * (level + 2), _Digits);
+            tp = NormalizeDouble(entry + eTP * point, _Digits);
             trade.Buy(recovLot, _Symbol, entry, sl, tp, tag);
          }
          else
          {
-            sl = NormalizeDouble(entry + StopLoss   * point * (level + 2), _Digits);
-            tp = NormalizeDouble(entry - TakeProfit * point, _Digits);
+            sl = NormalizeDouble(entry + eSL * point * (level + 2), _Digits);
+            tp = NormalizeDouble(entry - eTP * point, _Digits);
             trade.Sell(recovLot, _Symbol, entry, sl, tp, tag);
          }
          g_lastTradeTime = TimeCurrent();
@@ -333,24 +373,26 @@ bool PassFilters()
    TimeToStruct(TimeCurrent(), dt);
    if (!TradeWeekends && (dt.day_of_week == 0 || dt.day_of_week == 6)) return false;
 
-   // Drawdown guard
-   double balance = account.Balance();
-   double equity  = account.Equity();
-   double dd      = (balance > 0) ? (balance - equity) / balance * 100 : 0;
-   if (dd >= MaxDrawdownPct)
+   // Drawdown + daily-loss guards (master switch: UseRiskGuard)
+   if (UseRiskGuard)
    {
-      static datetime lw = 0;
-      if (TimeCurrent() - lw > 300) { Print("PAUSED: DD ", DoubleToString(dd,1), "%"); lw = TimeCurrent(); }
-      return false;
-   }
+      double balance = account.Balance();
+      double equity  = account.Equity();
+      double dd      = (balance > 0) ? (balance - equity) / balance * 100 : 0;
+      if (dd >= MaxDrawdownPct)
+      {
+         static datetime lw = 0;
+         if (TimeCurrent() - lw > 300) { Print("PAUSED: DD ", DoubleToString(dd,1), "%"); lw = TimeCurrent(); }
+         return false;
+      }
 
-   // Daily loss guard
-   double dailyDD = (g_dayStartBalance > 0) ? (g_dayStartBalance - equity) / g_dayStartBalance * 100 : 0;
-   if (dailyDD >= MaxDailyLossPct)
-   {
-      static datetime lw2 = 0;
-      if (TimeCurrent() - lw2 > 300) { Print("PAUSED: DailyLoss ", DoubleToString(dailyDD,1), "%"); lw2 = TimeCurrent(); }
-      return false;
+      double dailyDD = (g_dayStartBalance > 0) ? (g_dayStartBalance - equity) / g_dayStartBalance * 100 : 0;
+      if (dailyDD >= MaxDailyLossPct)
+      {
+         static datetime lw2 = 0;
+         if (TimeCurrent() - lw2 > 300) { Print("PAUSED: DailyLoss ", DoubleToString(dailyDD,1), "%"); lw2 = TimeCurrent(); }
+         return false;
+      }
    }
 
    // Spread guard

@@ -11,21 +11,33 @@
 //|         desync it flattens and restarts fresh.                   |
 //|  v1.5: Emergency drawdown guard — committed basket is cut once    |
 //|         its floating loss exceeds InpMaxLossPct of balance.       |
+//|  v1.6: ATR auto-scaling (InpAutoScale) makes the gold-tuned       |
+//|         distances adapt to any instrument's volatility, and a     |
+//|         master InpUseGuard switch to disable the guard entirely.  |
 //+------------------------------------------------------------------+
 #property copyright "Bad Apple 17BA Enterprise"
-#property version   "1.50"
+#property version   "1.60"
 
 #include <Trade\Trade.mqh>
 CTrade trade;
 
 //--- Core inputs
-input double InpTPDist      = 0.40;  // TP distance in price units
-input double InpRecovGap    = 1.20;  // Gap between recovery levels
+input double InpTPDist      = 0.40;  // TP distance in price units (gold-tuned; auto-scaled if InpAutoScale)
+input double InpRecovGap    = 1.20;  // Gap between recovery levels (gold-tuned; auto-scaled if InpAutoScale)
 input int    InpMaxLevels   = 8;     // Max recovery levels (1-8)
-input double InpMaxLossPct  = 20.0;  // Emergency-close committed basket at this % of balance floating loss (0=off)
 input int    InpMagic       = 171717;
 input int    InpSlippage    = 30;
 input bool   InpEnableLogs  = true;
+
+//--- Emergency drawdown guard
+input bool   InpUseGuard    = true;  // Master switch — turn the drawdown guard off completely
+input double InpMaxLossPct  = 20.0;  // Emergency-close committed basket at this % of balance floating loss
+
+//--- Auto-scale (per-instrument). OFF = use the gold-tuned distances as-is.
+//    ON = scale all distances by (current ATR / InpRefATR) so they fit any chart's volatility.
+input bool   InpAutoScale   = false; // Turn ON when running on non-gold instruments
+input int    InpATRPeriod   = 14;    // ATR period used for scaling
+input double InpRefATR      = 4.00;  // Reference ATR (price) the fixed distances are tuned at (XAUUSD M15)
 
 //--- Session filter (live data shows 24/5 — off by default)
 input bool   InpUseSession = false;
@@ -45,6 +57,23 @@ const double FIBLOTS[8] = {0.01, 0.02, 0.03, 0.05, 0.08, 0.13, 0.22, 0.37};
 
 // 0 = fresh straddle  |  1 = BUY committed  |  -1 = SELL committed
 int g_committed = 0;
+
+int    g_atrHandle = INVALID_HANDLE;
+// Effective (possibly auto-scaled) distances — refreshed every tick by UpdateScaling().
+double g_tp, g_gap, g_obBuf, g_lqBuf;
+
+void UpdateScaling() {
+   g_tp = InpTPDist; g_gap = InpRecovGap; g_obBuf = InpOBBuffer; g_lqBuf = InpLQBuffer;
+   if (!InpAutoScale || g_atrHandle == INVALID_HANDLE || InpRefATR <= 0) return;
+   double atr[];
+   if (CopyBuffer(g_atrHandle, 0, 0, 1, atr) > 0 && atr[0] > 0) {
+      double scale = atr[0] / InpRefATR;
+      g_tp    = InpTPDist    * scale;
+      g_gap   = InpRecovGap  * scale;
+      g_obBuf = InpOBBuffer  * scale;
+      g_lqBuf = InpLQBuffer  * scale;
+   }
+}
 
 //+------------------------------------------------------------------+
 int CountPos(ENUM_POSITION_TYPE type) {
@@ -101,7 +130,7 @@ double LastEntry(ENUM_POSITION_TYPE type) {
 void SetBasketTP(ENUM_POSITION_TYPE type) {
    double avg = AvgEntry(type);
    if (avg == 0) return;
-   double tp = (type == POSITION_TYPE_BUY) ? avg + InpTPDist : avg - InpTPDist;
+   double tp = (type == POSITION_TYPE_BUY) ? avg + g_tp : avg - g_tp;
    for (int i = PositionsTotal()-1; i >= 0; i--) {
       if (!PositionSelectByTicket(PositionGetTicket(i))) continue;
       ulong ticket = PositionGetTicket(i);
@@ -119,7 +148,7 @@ void Open(ENUM_ORDER_TYPE orderType, double lots) {
    double price = (orderType == ORDER_TYPE_BUY)
       ? SymbolInfoDouble(_Symbol, SYMBOL_ASK)
       : SymbolInfoDouble(_Symbol, SYMBOL_BID);
-   double tp = (orderType == ORDER_TYPE_BUY) ? price + InpTPDist : price - InpTPDist;
+   double tp = (orderType == ORDER_TYPE_BUY) ? price + g_tp : price - g_tp;
    bool ok = trade.PositionOpen(_Symbol, orderType, lots, price, 0, tp, "GoldTrap");
    if (InpEnableLogs && ok)
       PrintFormat("[GoldTrap] Open %s %.2f @ %.2f  TP %.2f",
@@ -199,12 +228,12 @@ double NearestSwingLow(double refPrice) {
 bool BuyBlocked(double ask) {
    if (!InpUseOBLQ) return false;
    double ob = NearestBearishOB(ask);
-   if (ob > 0 && ask >= ob - InpOBBuffer) {
+   if (ob > 0 && ask >= ob - g_obBuf) {
       if (InpEnableLogs) PrintFormat("[GoldTrap] BUY blocked — bearish OB @ %.2f", ob);
       return true;
    }
    double lq = NearestSwingHigh(ask);
-   if (lq > 0 && ask >= lq - InpLQBuffer) {
+   if (lq > 0 && ask >= lq - g_lqBuf) {
       if (InpEnableLogs) PrintFormat("[GoldTrap] BUY blocked — swing high LQ @ %.2f", lq);
       return true;
    }
@@ -214,12 +243,12 @@ bool BuyBlocked(double ask) {
 bool SellBlocked(double bid) {
    if (!InpUseOBLQ) return false;
    double ob = NearestBullishOB(bid);
-   if (ob > 0 && bid <= ob + InpOBBuffer) {
+   if (ob > 0 && bid <= ob + g_obBuf) {
       if (InpEnableLogs) PrintFormat("[GoldTrap] SELL blocked — bullish OB @ %.2f", ob);
       return true;
    }
    double lq = NearestSwingLow(bid);
-   if (lq > 0 && bid <= lq + InpLQBuffer) {
+   if (lq > 0 && bid <= lq + g_lqBuf) {
       if (InpEnableLogs) PrintFormat("[GoldTrap] SELL blocked — swing low LQ @ %.2f", lq);
       return true;
    }
@@ -262,10 +291,19 @@ int OnInit() {
    if (InpMaxLevels < 1 || InpMaxLevels > 8) {
       Alert("GoldTrap: InpMaxLevels must be 1-8"); return INIT_PARAMETERS_INCORRECT;
    }
+   g_atrHandle = iATR(_Symbol, PERIOD_CURRENT, InpATRPeriod);
+   if (InpAutoScale && g_atrHandle == INVALID_HANDLE)
+      Print("[GoldTrap] WARN: ATR handle failed — auto-scale falls back to fixed distances");
+   UpdateScaling();
    RecoverState();
-   PrintFormat("[GoldTrap] v1.5 — MaxLevels=%d  OB/LQ=%s  MaxLossPct=%.1f  Exclusive mode ON  (recovered state=%d)",
-      InpMaxLevels, InpUseOBLQ ? "ON" : "OFF", InpMaxLossPct, g_committed);
+   PrintFormat("[GoldTrap] v1.6 — MaxLevels=%d  OB/LQ=%s  Guard=%s(%.1f%%)  AutoScale=%s  (recovered state=%d)",
+      InpMaxLevels, InpUseOBLQ ? "ON" : "OFF",
+      InpUseGuard ? "ON" : "OFF", InpMaxLossPct, InpAutoScale ? "ON" : "OFF", g_committed);
    return INIT_SUCCEEDED;
+}
+
+void OnDeinit(const int reason) {
+   if (g_atrHandle != INVALID_HANDLE) IndicatorRelease(g_atrHandle);
 }
 
 //+------------------------------------------------------------------+
@@ -276,6 +314,8 @@ void OnTick() {
       if (dt.hour < InpStartHour || dt.hour >= InpStopHour) return;
    }
 
+   UpdateScaling();
+
    double ask = SymbolInfoDouble(_Symbol, SYMBOL_ASK);
    double bid = SymbolInfoDouble(_Symbol, SYMBOL_BID);
    int nB = CountPos(POSITION_TYPE_BUY);
@@ -284,7 +324,7 @@ void OnTick() {
    // ── STEP 0: Emergency drawdown guard ──────────────────────────────
    // Caps grid blow-up: once a committed basket's floating loss exceeds
    // InpMaxLossPct of balance, cut it and reset to a fresh straddle.
-   if (g_committed != 0 && InpMaxLossPct > 0) {
+   if (g_committed != 0 && InpUseGuard && InpMaxLossPct > 0) {
       ENUM_POSITION_TYPE side = (g_committed == 1) ? POSITION_TYPE_BUY : POSITION_TYPE_SELL;
       double maxLoss = AccountInfoDouble(ACCOUNT_BALANCE) * InpMaxLossPct / 100.0;
       if (BasketProfit(side) <= -maxLoss) {
@@ -302,10 +342,10 @@ void OnTick() {
    // to that side and immediately close the other (banking its profit).
    if (g_committed == 0) {
       bool buyRecovNeeded  = nB > 0
-         && ask <= LastEntry(POSITION_TYPE_BUY)  - InpRecovGap
+         && ask <= LastEntry(POSITION_TYPE_BUY)  - g_gap
          && !BuyBlocked(ask);
       bool sellRecovNeeded = nS > 0
-         && bid >= LastEntry(POSITION_TYPE_SELL) + InpRecovGap
+         && bid >= LastEntry(POSITION_TYPE_SELL) + g_gap
          && !SellBlocked(bid);
 
       if (buyRecovNeeded) {
@@ -342,14 +382,14 @@ void OnTick() {
 
    // ── STEP 4: Committed recovery ────────────────────────────────────
    if (g_committed == 1 && nB > 0 && nB < InpMaxLevels) {
-      if (ask <= LastEntry(POSITION_TYPE_BUY) - InpRecovGap && !BuyBlocked(ask)) {
+      if (ask <= LastEntry(POSITION_TYPE_BUY) - g_gap && !BuyBlocked(ask)) {
          Open(ORDER_TYPE_BUY, FIBLOTS[nB]);
          SetBasketTP(POSITION_TYPE_BUY);
       }
    }
 
    if (g_committed == -1 && nS > 0 && nS < InpMaxLevels) {
-      if (bid >= LastEntry(POSITION_TYPE_SELL) + InpRecovGap && !SellBlocked(bid)) {
+      if (bid >= LastEntry(POSITION_TYPE_SELL) + g_gap && !SellBlocked(bid)) {
          Open(ORDER_TYPE_SELL, FIBLOTS[nS]);
          SetBasketTP(POSITION_TYPE_SELL);
       }
