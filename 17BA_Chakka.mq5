@@ -1,6 +1,6 @@
 //+------------------------------------------------------------------+
-//|                                              GoldTrap_v1.mq5     |
-//|                          Bad Apple 17BA Enterprise               |
+//|                                         17BA_Chakka.mq5          |
+//|                  Bad Apple 17BA Enterprise — 17BA Chakka          |
 //|  Reverse-engineered from account 600001050 trade history.        |
 //|  v1.3: Exclusive mode — once one side enters recovery, the       |
 //|         other side closes immediately. Fresh straddle only       |
@@ -16,6 +16,8 @@
 //|         master InpUseGuard switch to disable the guard entirely.  |
 //+------------------------------------------------------------------+
 #property copyright "Bad Apple 17BA Enterprise"
+#property link      "https://github.com/jmac17ba/goldscalper-ea"
+#property description "17BA Chakka — XAUUSD straddle + Fibonacci recovery EA"
 #property version   "1.60"
 
 #include <Trade\Trade.mqh>
@@ -140,7 +142,7 @@ void SetBasketTP(ENUM_POSITION_TYPE type) {
       trade.PositionModify(ticket, 0, tp);
    }
    if (InpEnableLogs)
-      PrintFormat("[GoldTrap] %s basket TP → %.2f (avg %.2f)",
+      PrintFormat("[17BA Chakka] %s basket TP → %.2f (avg %.2f)",
          type == POSITION_TYPE_BUY ? "BUY" : "SELL", tp, avg);
 }
 
@@ -149,9 +151,9 @@ void Open(ENUM_ORDER_TYPE orderType, double lots) {
       ? SymbolInfoDouble(_Symbol, SYMBOL_ASK)
       : SymbolInfoDouble(_Symbol, SYMBOL_BID);
    double tp = (orderType == ORDER_TYPE_BUY) ? price + g_tp : price - g_tp;
-   bool ok = trade.PositionOpen(_Symbol, orderType, lots, price, 0, tp, "GoldTrap");
+   bool ok = trade.PositionOpen(_Symbol, orderType, lots, price, 0, tp, "17BA Chakka");
    if (InpEnableLogs && ok)
-      PrintFormat("[GoldTrap] Open %s %.2f @ %.2f  TP %.2f",
+      PrintFormat("[17BA Chakka] Open %s %.2f @ %.2f  TP %.2f",
          orderType == ORDER_TYPE_BUY ? "BUY" : "SELL", lots, price, tp);
 }
 
@@ -229,12 +231,12 @@ bool BuyBlocked(double ask) {
    if (!InpUseOBLQ) return false;
    double ob = NearestBearishOB(ask);
    if (ob > 0 && ask >= ob - g_obBuf) {
-      if (InpEnableLogs) PrintFormat("[GoldTrap] BUY blocked — bearish OB @ %.2f", ob);
+      if (InpEnableLogs) PrintFormat("[17BA Chakka] BUY blocked — bearish OB @ %.2f", ob);
       return true;
    }
    double lq = NearestSwingHigh(ask);
    if (lq > 0 && ask >= lq - g_lqBuf) {
-      if (InpEnableLogs) PrintFormat("[GoldTrap] BUY blocked — swing high LQ @ %.2f", lq);
+      if (InpEnableLogs) PrintFormat("[17BA Chakka] BUY blocked — swing high LQ @ %.2f", lq);
       return true;
    }
    return false;
@@ -244,12 +246,12 @@ bool SellBlocked(double bid) {
    if (!InpUseOBLQ) return false;
    double ob = NearestBullishOB(bid);
    if (ob > 0 && bid <= ob + g_obBuf) {
-      if (InpEnableLogs) PrintFormat("[GoldTrap] SELL blocked — bullish OB @ %.2f", ob);
+      if (InpEnableLogs) PrintFormat("[17BA Chakka] SELL blocked — bullish OB @ %.2f", ob);
       return true;
    }
    double lq = NearestSwingLow(bid);
    if (lq > 0 && bid <= lq + g_lqBuf) {
-      if (InpEnableLogs) PrintFormat("[GoldTrap] SELL blocked — swing low LQ @ %.2f", lq);
+      if (InpEnableLogs) PrintFormat("[17BA Chakka] SELL blocked — swing low LQ @ %.2f", lq);
       return true;
    }
    return false;
@@ -277,7 +279,7 @@ void RecoverState() {
 
    // Both sides stacked → invalid desync. Flatten and restart fresh.
    if (InpEnableLogs)
-      PrintFormat("[GoldTrap] Desync on init (%d BUY / %d SELL) — flattening to restart fresh", nB, nS);
+      PrintFormat("[17BA Chakka] Desync on init (%d BUY / %d SELL) — flattening to restart fresh", nB, nS);
    CloseAllOfType(POSITION_TYPE_BUY);
    CloseAllOfType(POSITION_TYPE_SELL);
    g_committed = 0;
@@ -293,10 +295,10 @@ int OnInit() {
    }
    g_atrHandle = iATR(_Symbol, PERIOD_CURRENT, InpATRPeriod);
    if (InpAutoScale && g_atrHandle == INVALID_HANDLE)
-      Print("[GoldTrap] WARN: ATR handle failed — auto-scale falls back to fixed distances");
+      Print("[17BA Chakka] WARN: ATR handle failed — auto-scale falls back to fixed distances");
    UpdateScaling();
    RecoverState();
-   PrintFormat("[GoldTrap] v1.6 — MaxLevels=%d  OB/LQ=%s  Guard=%s(%.1f%%)  AutoScale=%s  (recovered state=%d)",
+   PrintFormat("[17BA Chakka] v1.6 — MaxLevels=%d  OB/LQ=%s  Guard=%s(%.1f%%)  AutoScale=%s  (recovered state=%d)",
       InpMaxLevels, InpUseOBLQ ? "ON" : "OFF",
       InpUseGuard ? "ON" : "OFF", InpMaxLossPct, InpAutoScale ? "ON" : "OFF", g_committed);
    return INIT_SUCCEEDED;
@@ -329,7 +331,7 @@ void OnTick() {
       double maxLoss = AccountInfoDouble(ACCOUNT_BALANCE) * InpMaxLossPct / 100.0;
       if (BasketProfit(side) <= -maxLoss) {
          if (InpEnableLogs)
-            PrintFormat("[GoldTrap] EMERGENCY close %s basket — loss %.2f exceeded cap %.2f (%.1f%% of balance)",
+            PrintFormat("[17BA Chakka] EMERGENCY close %s basket — loss %.2f exceeded cap %.2f (%.1f%% of balance)",
                side == POSITION_TYPE_BUY ? "BUY" : "SELL", BasketProfit(side), maxLoss, InpMaxLossPct);
          CloseAllOfType(side);
          g_committed = 0;
@@ -352,23 +354,23 @@ void OnTick() {
          g_committed = 1;
          CloseAllOfType(POSITION_TYPE_SELL);
          nS = 0;
-         if (InpEnableLogs) Print("[GoldTrap] BUY committed — SELL closed");
+         if (InpEnableLogs) Print("[17BA Chakka] BUY committed — SELL closed");
       } else if (sellRecovNeeded) {
          g_committed = -1;
          CloseAllOfType(POSITION_TYPE_BUY);
          nB = 0;
-         if (InpEnableLogs) Print("[GoldTrap] SELL committed — BUY closed");
+         if (InpEnableLogs) Print("[17BA Chakka] SELL committed — BUY closed");
       }
    }
 
    // ── STEP 2: Basket TP hit → reset to fresh ────────────────────────
    if (g_committed == 1 && nB == 0) {
       g_committed = 0;
-      if (InpEnableLogs) Print("[GoldTrap] BUY basket TP hit — opening fresh straddle");
+      if (InpEnableLogs) Print("[17BA Chakka] BUY basket TP hit — opening fresh straddle");
    }
    if (g_committed == -1 && nS == 0) {
       g_committed = 0;
-      if (InpEnableLogs) Print("[GoldTrap] SELL basket TP hit — opening fresh straddle");
+      if (InpEnableLogs) Print("[17BA Chakka] SELL basket TP hit — opening fresh straddle");
    }
 
    // ── STEP 3: Fresh straddle ─────────────────────────────────────────

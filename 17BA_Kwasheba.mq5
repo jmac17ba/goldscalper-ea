@@ -1,5 +1,6 @@
 //+------------------------------------------------------------------+
-//|  GoldScalper v2.0 — FixedVol80-Style M1 Ultra Scalper           |
+//|  17BA_Kwasheba.mq5 — Bad Apple 17BA Enterprise                   |
+//|  17BA Kwasheba — FixedVol80-Style M1 Ultra Scalper              |
 //|  Reverse-engineered from: Abang Rimba 600001050 REAL report      |
 //|  Profile: 7274 trades/week | 66% win | 1-min hold | 0.80 lot    |
 //|  WARNING: Max drawdown on original = 55%. Use demo first.        |
@@ -7,7 +8,9 @@
 //|         to any instrument's volatility; UseRiskGuard master switch |
 //|         can disable the drawdown + daily-loss guards entirely.     |
 //+------------------------------------------------------------------+
-#property copyright "GoldScalper v2.1"
+#property copyright "Bad Apple 17BA Enterprise — 17BA Kwasheba"
+#property link      "https://github.com/jmac17ba/goldscalper-ea"
+#property description "17BA Kwasheba — XAUUSD M1 scalper with 4-level recovery grid"
 #property version   "2.10"
 #property strict
 
@@ -130,8 +133,8 @@ int OnInit()
    g_dayStartBalance = account.Balance();
    g_lastDayReset    = iTime(_Symbol, PERIOD_D1, 0);
 
-   Print("GoldScalper v2.0 | TP:", TakeProfit, "pts | SL:", StopLoss,
-         "pts | Lot:", FixedLot, " | Recovery:", UseRecovery);
+   Print("17BA Kwasheba v2.1 | TP:", TakeProfit, "pts | SL:", StopLoss,
+         "pts | Lot:", FixedLot, " | Recovery:", UseRecovery, " | AutoScale:", InpAutoScale);
    return INIT_SUCCEEDED;
 }
 
@@ -148,7 +151,7 @@ void OnDeinit(const int reason)
 
    double wr = (g_totalTrades > 0) ? (double)g_wins / g_totalTrades * 100 : 0;
    double pf = (g_grossLoss  != 0) ? g_grossProfit / MathAbs(g_grossLoss) : 0;
-   Print("=== v2.0 Session | Trades:", g_totalTrades,
+   Print("=== 17BA Kwasheba Session | Trades:", g_totalTrades,
          " WR:", DoubleToString(wr,1), "%",
          " PF:", DoubleToString(pf,2),
          " Net:", DoubleToString(g_grossProfit + g_grossLoss, 2));
