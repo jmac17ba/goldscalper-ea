@@ -5,20 +5,27 @@
 //|  v1.3: Exclusive mode — once one side enters recovery, the       |
 //|         other side closes immediately. Fresh straddle only       |
 //|         opens after the committed side hits basket TP.           |
+//|  v1.4: OnInit rebuilds commit state from open positions instead  |
+//|         of resetting to 0 (fixes restart/recompile desync where  |
+//|         both sides ended up stacked). On a both-sides-stacked    |
+//|         desync it flattens and restarts fresh.                   |
+//|  v1.5: Emergency drawdown guard — committed basket is cut once    |
+//|         its floating loss exceeds InpMaxLossPct of balance.       |
 //+------------------------------------------------------------------+
 #property copyright "Bad Apple 17BA Enterprise"
-#property version   "1.30"
+#property version   "1.50"
 
 #include <Trade\Trade.mqh>
 CTrade trade;
 
 //--- Core inputs
-input double InpTPDist     = 0.40;   // TP distance in price units
-input double InpRecovGap   = 1.20;   // Gap between recovery levels
-input int    InpMaxLevels  = 8;      // Max recovery levels (1-8)
-input int    InpMagic      = 171717;
-input int    InpSlippage   = 30;
-input bool   InpEnableLogs = true;
+input double InpTPDist      = 0.40;  // TP distance in price units
+input double InpRecovGap    = 1.20;  // Gap between recovery levels
+input int    InpMaxLevels   = 8;     // Max recovery levels (1-8)
+input double InpMaxLossPct  = 20.0;  // Emergency-close committed basket at this % of balance floating loss (0=off)
+input int    InpMagic       = 171717;
+input int    InpSlippage    = 30;
+input bool   InpEnableLogs  = true;
 
 //--- Session filter (live data shows 24/5 — off by default)
 input bool   InpUseSession = false;
@@ -63,6 +70,18 @@ double AvgEntry(ENUM_POSITION_TYPE type) {
       sumVal  += lots * PositionGetDouble(POSITION_PRICE_OPEN);
    }
    return sumLots > 0 ? sumVal / sumLots : 0;
+}
+
+double BasketProfit(ENUM_POSITION_TYPE type) {
+   double p = 0;
+   for (int i = PositionsTotal()-1; i >= 0; i--) {
+      if (!PositionSelectByTicket(PositionGetTicket(i))) continue;
+      if (PositionGetInteger(POSITION_MAGIC) != InpMagic) continue;
+      if (PositionGetString(POSITION_SYMBOL) != _Symbol) continue;
+      if ((ENUM_POSITION_TYPE)PositionGetInteger(POSITION_TYPE) != type) continue;
+      p += PositionGetDouble(POSITION_PROFIT) + PositionGetDouble(POSITION_SWAP);
+   }
+   return p;
 }
 
 double LastEntry(ENUM_POSITION_TYPE type) {
@@ -208,6 +227,34 @@ bool SellBlocked(double bid) {
 }
 
 //+------------------------------------------------------------------+
+//  STATE RECOVERY — rebuild g_committed from live positions.
+//  g_committed lives only in memory, so any reinit (restart, recompile,
+//  timeframe/symbol change, VPS reconnect) would otherwise reset it to 0
+//  while a basket is still open — desyncing into both-sides-stacked.
+//+------------------------------------------------------------------+
+void RecoverState() {
+   int nB = CountPos(POSITION_TYPE_BUY);
+   int nS = CountPos(POSITION_TYPE_SELL);
+
+   // Flat → fresh.
+   if (nB == 0 && nS == 0) { g_committed = 0; return; }
+
+   // One side only → that side is the committed basket. Re-assert its TP.
+   if (nB > 0 && nS == 0) { g_committed = 1;  SetBasketTP(POSITION_TYPE_BUY);  return; }
+   if (nS > 0 && nB == 0) { g_committed = -1; SetBasketTP(POSITION_TYPE_SELL); return; }
+
+   // Exactly one each → genuine fresh straddle.
+   if (nB == 1 && nS == 1) { g_committed = 0; return; }
+
+   // Both sides stacked → invalid desync. Flatten and restart fresh.
+   if (InpEnableLogs)
+      PrintFormat("[GoldTrap] Desync on init (%d BUY / %d SELL) — flattening to restart fresh", nB, nS);
+   CloseAllOfType(POSITION_TYPE_BUY);
+   CloseAllOfType(POSITION_TYPE_SELL);
+   g_committed = 0;
+}
+
+//+------------------------------------------------------------------+
 int OnInit() {
    trade.SetExpertMagicNumber(InpMagic);
    trade.SetDeviationInPoints(InpSlippage);
@@ -215,22 +262,40 @@ int OnInit() {
    if (InpMaxLevels < 1 || InpMaxLevels > 8) {
       Alert("GoldTrap: InpMaxLevels must be 1-8"); return INIT_PARAMETERS_INCORRECT;
    }
-   PrintFormat("[GoldTrap] v1.3 — MaxLevels=%d  OB/LQ=%s  Exclusive mode ON",
-      InpMaxLevels, InpUseOBLQ ? "ON" : "OFF");
+   RecoverState();
+   PrintFormat("[GoldTrap] v1.5 — MaxLevels=%d  OB/LQ=%s  MaxLossPct=%.1f  Exclusive mode ON  (recovered state=%d)",
+      InpMaxLevels, InpUseOBLQ ? "ON" : "OFF", InpMaxLossPct, g_committed);
    return INIT_SUCCEEDED;
 }
 
 //+------------------------------------------------------------------+
 void OnTick() {
    if (InpUseSession) {
-      int h = TimeHour(TimeCurrent());
-      if (h < InpStartHour || h >= InpStopHour) return;
+      MqlDateTime dt;
+      TimeToStruct(TimeCurrent(), dt);
+      if (dt.hour < InpStartHour || dt.hour >= InpStopHour) return;
    }
 
    double ask = SymbolInfoDouble(_Symbol, SYMBOL_ASK);
    double bid = SymbolInfoDouble(_Symbol, SYMBOL_BID);
    int nB = CountPos(POSITION_TYPE_BUY);
    int nS = CountPos(POSITION_TYPE_SELL);
+
+   // ── STEP 0: Emergency drawdown guard ──────────────────────────────
+   // Caps grid blow-up: once a committed basket's floating loss exceeds
+   // InpMaxLossPct of balance, cut it and reset to a fresh straddle.
+   if (g_committed != 0 && InpMaxLossPct > 0) {
+      ENUM_POSITION_TYPE side = (g_committed == 1) ? POSITION_TYPE_BUY : POSITION_TYPE_SELL;
+      double maxLoss = AccountInfoDouble(ACCOUNT_BALANCE) * InpMaxLossPct / 100.0;
+      if (BasketProfit(side) <= -maxLoss) {
+         if (InpEnableLogs)
+            PrintFormat("[GoldTrap] EMERGENCY close %s basket — loss %.2f exceeded cap %.2f (%.1f%% of balance)",
+               side == POSITION_TYPE_BUY ? "BUY" : "SELL", BasketProfit(side), maxLoss, InpMaxLossPct);
+         CloseAllOfType(side);
+         g_committed = 0;
+         return;
+      }
+   }
 
    // ── STEP 1: Detect recovery about to fire on either side ──────────
    // In fresh mode, the moment one side needs a recovery entry we commit
