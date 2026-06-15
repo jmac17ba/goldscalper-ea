@@ -148,8 +148,9 @@ int OnInit()
    g_dayStartBalance = account.Balance();
    g_lastDayReset    = iTime(_Symbol, PERIOD_D1, 0);
 
-   Print("17BA Kwasheba v2.1 | TP:", TakeProfit, "pts | SL:", StopLoss,
-         "pts | Lot:", FixedLot, " | Recovery:", UseRecovery, " | AutoScale:", InpAutoScale);
+   Print("17BA Kwasheba v2.2 | TP:", eTP, "pts | SL:", eSL,
+         "pts | Lot:", FixedLot, " | Recovery:", UseRecovery, " | AutoScale:", InpAutoScale,
+         " | broker minStop:", SymbolInfoInteger(_Symbol, SYMBOL_TRADE_STOPS_LEVEL), "pts");
    return INIT_SUCCEEDED;
 }
 
