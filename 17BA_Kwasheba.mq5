@@ -10,11 +10,14 @@
 //|  v2.2: Clamp TP/SL/trail/BE to the broker's minimum stop distance  |
 //|         (SYMBOL_TRADE_STOPS_LEVEL) so orders no longer fail with    |
 //|         "invalid stops" (error 10016) on brokers like Deriv.        |
+//|  v2.3: Safe lot sizing — default 0.01 (was 0.80!), optional         |
+//|         RiskPercent auto-lot, and MaxLot hard cap on EVERY order     |
+//|         incl. recovery so the grid can't balloon the position.       |
 //+------------------------------------------------------------------+
 #property copyright "Bad Apple 17BA Enterprise — 17BA Kwasheba"
 #property link      "https://github.com/jmac17ba/goldscalper-ea"
 #property description "17BA Kwasheba — XAUUSD M1 scalper with 4-level recovery grid"
-#property version   "2.20"
+#property version   "2.30"
 #property strict
 
 #include <Trade\Trade.mqh>
@@ -26,7 +29,9 @@
 //──────────────────────────────────────────────────────────────────
 
 input group "== Core Settings =="
-input double FixedLot         = 0.80;    // Fixed lot (original uses 0.80)
+input double FixedLot         = 0.01;    // Base lot when RiskPercent=0 (0.80 on gold is HUGE — keep this small)
+input double RiskPercent      = 0.0;     // Auto-size base lot to risk this % of balance per trade (0 = use FixedLot)
+input double MaxLot           = 0.50;    // Hard cap on EVERY order incl. recovery — stops the grid ballooning
 input int    TakeProfit       = 8;       // TP in points (~6-8pts reverse-engineered)
 input int    StopLoss         = 14;      // SL in points (~13-15pts reverse-engineered)
 input int    MagicNumber      = 8000001; // EA magic number
@@ -148,9 +153,10 @@ int OnInit()
    g_dayStartBalance = account.Balance();
    g_lastDayReset    = iTime(_Symbol, PERIOD_D1, 0);
 
-   Print("17BA Kwasheba v2.2 | TP:", eTP, "pts | SL:", eSL,
-         "pts | Lot:", FixedLot, " | Recovery:", UseRecovery, " | AutoScale:", InpAutoScale,
-         " | broker minStop:", SymbolInfoInteger(_Symbol, SYMBOL_TRADE_STOPS_LEVEL), "pts");
+   string lotMode = (RiskPercent > 0) ? StringFormat("Risk %.2f%% (~%.2f lot)", RiskPercent, CalcLot(eSL))
+                                      : StringFormat("Fixed %.2f lot", FixedLot);
+   Print("17BA Kwasheba v2.3 | TP:", eTP, "pts | SL:", eSL, "pts | Lot: ", lotMode,
+         " | MaxLot:", MaxLot, " | broker minStop:", SymbolInfoInteger(_Symbol, SYMBOL_TRADE_STOPS_LEVEL), "pts");
    return INIT_SUCCEEDED;
 }
 
@@ -189,8 +195,8 @@ void OnTick()
    if (CountMagicPositions() >= MaxOpenTrades) return;
 
    SIGNAL sig = GetSignal();
-   if (sig == SIG_BUY)  { OpenTrade(ORDER_TYPE_BUY,  FixedLot); g_lastTradeTime = TimeCurrent(); }
-   if (sig == SIG_SELL) { OpenTrade(ORDER_TYPE_SELL, FixedLot); g_lastTradeTime = TimeCurrent(); }
+   if (sig == SIG_BUY)  { OpenTrade(ORDER_TYPE_BUY,  CalcLot(eSL)); g_lastTradeTime = TimeCurrent(); }
+   if (sig == SIG_SELL) { OpenTrade(ORDER_TYPE_SELL, CalcLot(eSL)); g_lastTradeTime = TimeCurrent(); }
 }
 
 //──────────────────────────────────────────────────────────────────
@@ -217,6 +223,37 @@ SIGNAL GetSignal()
 }
 
 //──────────────────────────────────────────────────────────────────
+//  LOT SIZING — clamp to broker limits, step, and the MaxLot cap.
+//──────────────────────────────────────────────────────────────────
+
+double NormalizeLot(double lot)
+{
+   double minLot = SymbolInfoDouble(_Symbol, SYMBOL_VOLUME_MIN);
+   double maxLot = SymbolInfoDouble(_Symbol, SYMBOL_VOLUME_MAX);
+   double step   = SymbolInfoDouble(_Symbol, SYMBOL_VOLUME_STEP);
+   if (step <= 0) step = 0.01;
+   lot = MathFloor(lot / step) * step;
+   double cap = (MaxLot > 0) ? MathMin(maxLot, MaxLot) : maxLot;
+   return MathMax(minLot, MathMin(lot, cap));
+}
+
+// Base lot for a new entry: risk-based if RiskPercent>0, else FixedLot. Always capped.
+double CalcLot(int slPoints)
+{
+   double lot = FixedLot;
+   if (RiskPercent > 0)
+   {
+      double tickVal = SymbolInfoDouble(_Symbol, SYMBOL_TRADE_TICK_VALUE);
+      double tickSz  = SymbolInfoDouble(_Symbol, SYMBOL_TRADE_TICK_SIZE);
+      double slPrice = slPoints * SymbolInfoDouble(_Symbol, SYMBOL_POINT);
+      double lossPerLot = (tickSz > 0) ? (slPrice / tickSz) * tickVal : 0;
+      if (lossPerLot > 0)
+         lot = AccountInfoDouble(ACCOUNT_BALANCE) * RiskPercent / 100.0 / lossPerLot;
+   }
+   return NormalizeLot(lot);
+}
+
+//──────────────────────────────────────────────────────────────────
 //  OPEN TRADE
 //──────────────────────────────────────────────────────────────────
 
@@ -240,11 +277,7 @@ void OpenTrade(ENUM_ORDER_TYPE type, double lot)
       tp    = NormalizeDouble(entry - eTP * point, _Digits);
    }
 
-   double minLot  = SymbolInfoDouble(_Symbol, SYMBOL_VOLUME_MIN);
-   double maxLot  = SymbolInfoDouble(_Symbol, SYMBOL_VOLUME_MAX);
-   double lotStep = SymbolInfoDouble(_Symbol, SYMBOL_VOLUME_STEP);
-   lot = MathFloor(lot / lotStep) * lotStep;
-   lot = MathMax(minLot, MathMin(maxLot, lot));
+   lot = NormalizeLot(lot);
 
    bool ok = (type == ORDER_TYPE_BUY)
       ? trade.Buy(lot, _Symbol, entry, sl, tp, "GS2_B")
@@ -344,9 +377,7 @@ void CheckRecovery()
 
       if (lossPoints >= eRecovDist)
       {
-         double recovLot = NormalizeDouble(posInfo.Volume() * RecoveryMultiply, 2);
-         double minLot   = SymbolInfoDouble(_Symbol, SYMBOL_VOLUME_MIN);
-         recovLot = MathMax(minLot, recovLot);
+         double recovLot = NormalizeLot(posInfo.Volume() * RecoveryMultiply);
 
          // Add recovery tag to distinguish levels
          string tag = (recovType == ORDER_TYPE_BUY) ? "GS2_RB_" : "GS2_RS_";
