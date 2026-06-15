@@ -17,11 +17,14 @@
 //|  v1.7: Recovery ladder extended to 12 levels (InpMaxLevels max     |
 //|         12) for deeper averaging on big retracements. Bigger size  |
 //|         at deep levels — keep the drawdown guard on.               |
+//|  v1.8: Volatility filter (InpUseVolFilter) — pauses NEW straddles   |
+//|         when ATR is elevated vs its average (the violent regimes    |
+//|         that stack a grid to blow-up). Existing baskets unaffected. |
 //+------------------------------------------------------------------+
 #property copyright "Bad Apple 17BA Enterprise"
 #property link      "https://github.com/jmac17ba/goldscalper-ea"
 #property description "17BA Chakka — XAUUSD straddle + Fibonacci recovery EA"
-#property version   "1.70"
+#property version   "1.80"
 
 #include <Trade\Trade.mqh>
 CTrade trade;
@@ -43,6 +46,13 @@ input double InpMaxLossPct  = 20.0;  // Emergency-close committed basket at this
 input bool   InpAutoScale   = false; // Turn ON when running on non-gold instruments
 input int    InpATRPeriod   = 14;    // ATR period used for scaling
 input double InpRefATR      = 4.00;  // Reference ATR (price) the fixed distances are tuned at (XAUUSD M15)
+
+//--- Volatility filter. Evidence (Markov study): violent/high-ATR regimes precede
+//    ~2x bigger one-way moves — the conditions that stack a grid to blow-up. When ON,
+//    NEW straddles are paused while ATR is elevated; existing baskets keep recovering.
+input bool   InpUseVolFilter = true;  // Don't OPEN new straddles when volatility is elevated
+input double InpMaxATRMult   = 1.8;   // "Elevated" = current ATR > this × its recent average
+input int    InpVolLookback  = 100;   // Bars to average ATR over for the volatility baseline
 
 //--- Session filter (live data shows 24/5 — off by default)
 input bool   InpUseSession = false;
@@ -80,6 +90,18 @@ void UpdateScaling() {
       g_obBuf = InpOBBuffer  * scale;
       g_lqBuf = InpLQBuffer  * scale;
    }
+}
+
+// TRUE when current ATR is elevated vs its recent average — i.e. a violent regime
+// where new grids are most likely to get trapped. Only gates NEW straddle entries.
+bool VolElevated() {
+   if (!InpUseVolFilter || g_atrHandle == INVALID_HANDLE) return false;
+   double atr[];
+   if (CopyBuffer(g_atrHandle, 0, 0, InpVolLookback, atr) < InpVolLookback) return false;
+   double sum = 0;
+   for (int i = 0; i < InpVolLookback; i++) sum += atr[i];
+   double avg = sum / InpVolLookback;
+   return (avg > 0 && atr[0] > InpMaxATRMult * avg);
 }
 
 //+------------------------------------------------------------------+
@@ -303,9 +325,10 @@ int OnInit() {
       Print("[17BA Chakka] WARN: ATR handle failed — auto-scale falls back to fixed distances");
    UpdateScaling();
    RecoverState();
-   PrintFormat("[17BA Chakka] v1.7 — MaxLevels=%d  OB/LQ=%s  Guard=%s(%.1f%%)  AutoScale=%s  (recovered state=%d)",
+   PrintFormat("[17BA Chakka] v1.8 — MaxLevels=%d  OB/LQ=%s  Guard=%s(%.1f%%)  VolFilter=%s  AutoScale=%s  (recovered state=%d)",
       InpMaxLevels, InpUseOBLQ ? "ON" : "OFF",
-      InpUseGuard ? "ON" : "OFF", InpMaxLossPct, InpAutoScale ? "ON" : "OFF", g_committed);
+      InpUseGuard ? "ON" : "OFF", InpMaxLossPct,
+      InpUseVolFilter ? "ON" : "OFF", InpAutoScale ? "ON" : "OFF", g_committed);
    return INIT_SUCCEEDED;
 }
 
@@ -380,10 +403,13 @@ void OnTick() {
 
    // ── STEP 3: Fresh straddle ─────────────────────────────────────────
    // Both sides open at 0.01. Each side renews independently when its
-   // individual TP is hit (before any recovery is needed).
+   // individual TP is hit. Vol filter pauses NEW entries in violent regimes
+   // (existing committed baskets in STEP 4 keep recovering regardless).
    if (g_committed == 0) {
-      if (nB == 0 && !BuyBlocked(ask))  { Open(ORDER_TYPE_BUY,  FIBLOTS[0]); nB = 1; }
-      if (nS == 0 && !SellBlocked(bid)) { Open(ORDER_TYPE_SELL, FIBLOTS[0]); nS = 1; }
+      if (!VolElevated()) {
+         if (nB == 0 && !BuyBlocked(ask))  { Open(ORDER_TYPE_BUY,  FIBLOTS[0]); nB = 1; }
+         if (nS == 0 && !SellBlocked(bid)) { Open(ORDER_TYPE_SELL, FIBLOTS[0]); nS = 1; }
+      }
       return;
    }
 
