@@ -1,103 +1,82 @@
-# GoldScalper v3 — XAUUSD Straddle + Fibonacci Recovery EA
+# Bad Apple 17BA — Trading EAs for MetaTrader 5
 
-MQL5 Expert Advisor for **Deriv MT5**, trading XAUUSD on the M1 timeframe.
+Two automated Expert Advisors for **XAUUSD (gold)** on **MetaTrader 5**. Buy once from
+[17ba-bad-apple-enterprise.vercel.app](https://17ba-bad-apple-enterprise.vercel.app), download your file, attach, and run.
 
-## Strategy Overview
+| EA | File | Chart | Style |
+|----|------|-------|-------|
+| **17BA Chakka** | `17BA_Chakka.mq5` | XAUUSD **M15** | Exclusive straddle + 8-level Fibonacci recovery |
+| **17BA Kwasheba** | `17BA_Kwasheba.mq5` | XAUUSD **M1** | Fast scalper + 4-level recovery grid |
 
-1. **Straddle entry** — places a BUY STOP above and SELL STOP below current price at the start of each bar
-2. **Fibonacci recovery ladder** — if the triggered position moves against you, new positions are added at increasing lot sizes (0.01 → 0.02 → 0.03 → 0.05 → 0.08 → 0.13 → 0.21 …) every `RecoveryGapPips`
-3. **Basket TP** — when recovery is active (2+ positions on one side), all positions close together when price returns to the entry level of the **most recently added** recovery position (the last-added trade breaks even, and the basket exits at a controlled loss rather than waiting for full recovery)
-4. **Trend filter** — blocks new straddless when the last N candles are trending strongly in one direction
-5. **Recovery pause** — stops adding levels 3+ when the trend is running hard against the basket
-
----
-
-## Current Input Parameters (recommended settings)
-
-| Group | Parameter | Value | Description |
-|-------|-----------|-------|-------------|
-| Core | `BaseLot` | `0.01` | Lot size for initial straddle entries |
-| Core | `TargetProfitUSD` | `0.45` | Profit target for single-position closes (price units) |
-| Core | `MagicNumber` | `9000001` | EA identifier |
-| Core | `Slippage` | `10` | Max slippage in points |
-| Straddle | `StopOffsetPips` | `5.0` | Distance from current price to place stop orders |
-| Straddle | `OrderExpiryBars` | `0` | 0 = GTC (never expire) |
-| Straddle | `MaxOpenPositions` | `12` | Maximum simultaneous positions |
-| Recovery | `UseRecovery` | `true` | Enable Fibonacci recovery ladder |
-| Recovery | `RecoveryGapPips` | `12.0` | Gap between recovery levels |
-| Recovery | `MaxRecoveryLevel` | `6` | Max number of recovery levels |
-| Frequency | `TradeGapSeconds` | `5` | Minimum seconds between trades |
-| Frequency | `TradeWeekends` | `false` | Skip weekend trading |
-| Trend Filter | `TrendLookback` | `5` | Candles to look back for trend detection |
-| Trend Filter | `TrendMaxSame` | `4` | Block straddle if X same-direction candles |
-| Trend Filter | `TrendMaxRangePips` | `20.0` | Block straddle if range > X pips over lookback |
-| Risk | `MaxDrawdownPct` | `20.0` | Max drawdown % before EA stops |
-| Risk | `MaxDailyLossPct` | `5.0` | Max daily loss % |
-| Risk | `UseSpreadFilter` | `true` | Skip trades when spread is too wide |
-| Risk | `MaxSpread` | `20` | Max allowed spread in points |
-| Lifecycle | `SessionProfitTarget` | `100.0` | Stop EA when session profit reaches $100 |
-| Lifecycle | `SessionLossLimit` | `-150.0` | Stop EA when session loss reaches -$150 |
-| Lifecycle | `HardFloorUSD` | `-200.0` | Close ALL positions if equity drops $200 |
-| Telegram | `TelegramToken` | `""` | Optional: paste your bot token |
-| Telegram | `TelegramChatId` | `""` | Optional: paste your chat ID |
+> ⚠️ **Risk warning.** Trading gold is high-risk and can lose money. These EAs use grid/recovery
+> methods that can draw down heavily in strong trends. **No profit is guaranteed.** Test on a **demo
+> account** and backtest in the Strategy Tester before risking real funds. Full disclaimer:
+> [/risk](https://17ba-bad-apple-enterprise.vercel.app/risk).
 
 ---
 
-## Installation on Deriv MT5
+## Quick Setup
 
-1. Open **MetaTrader 5** (Deriv)
-2. Go to **File → Open Data Folder**
-3. Navigate to `MQL5/Experts/`
-4. Copy `GoldScalper_v3.mq5` into that folder
-5. In MT5: go to **Navigator** panel → **Expert Advisors** → right-click → **Refresh**
-6. Double-click `GoldScalper_v3` to open the EA settings dialog
-7. Enter the parameters from the table above
-8. Attach to an **XAUUSD M1** chart
-9. Enable **AutoTrading** (the green play button at the top)
+1. Install **MetaTrader 5** from your broker (Deriv recommended for low XAUUSD spreads).
+2. In MT5: **File → Open Data Folder → MQL5 → Experts**, and copy your `.mq5` file there.
+3. In **MetaEditor**, open the file and press **Compile (F7)** — should be 0 errors.
+4. Back in MT5, in the **Navigator**, right-click **Expert Advisors → Refresh**.
+5. Open the correct chart (**Chakka → XAUUSD M15**, **Kwasheba → XAUUSD M1**).
+6. Drag the EA onto the chart → tick **Allow Algo Trading** → **OK**.
+7. Make sure the toolbar **Algo Trading** button is green. A smiley in the top-right of the chart means it's live.
 
----
-
-## Key Logic Notes for AI Setup
-
-### TP Strategy (Recovery Baskets)
-When a recovery basket has 2+ positions:
-- **Close trigger**: `ManageBaskets()` fires every tick — closes the basket when `bid ≤ g_lastSellEntry` (SELL) or `ask ≥ g_lastBuyEntry` (BUY)
-- `g_lastSellEntry` / `g_lastBuyEntry` are set each time a new recovery level opens
-- Fallback: basket also closes via individual position TPs (set to weighted average entry in `UpdateBasketTPs`)
-
-### Trend Filter
-`PassFilters()` checks the last `TrendLookback` M1 candles:
-- Counts bullish vs bearish candles → blocks straddle if `≥ TrendMaxSame` same-color
-- Measures high–low range → blocks if `> TrandMaxRangePips` pips
-
-### Recovery Pause
-`CheckRecovery()` calls `TrendingAgainst()` before opening level 3+:
-- Counts candles running against the basket direction
-- If `≥ TrendMaxSame` candles against → skips adding the next level
-
-### Session Lifecycle
-- Session state persists across EA restarts via `GoldScalper_session.csv`
-- Skipped in backtesting (detected via `MQLInfoInteger(MQL_TESTER)`)
-- `ClearSession()` resets `g_lastBuyEntry` and `g_lastSellEntry`
-
-### Chart Visuals
-- **Dotted recovery lines** — `OBJ_TREND` connecting each recovery level (prefix `GS3_`)
-- **Entry arrows** — `OBJ_ARROW_BUY` / `OBJ_ARROW_SELL` drawn via `OnTradeTransaction`
+> One EA per chart. To run both, use two separate charts.
 
 ---
 
-## Files
+## 17BA Chakka — XAUUSD M15
 
-| File | Purpose |
-|------|---------|
-| `GoldScalper_v3.mq5` | Main EA source code |
+Opens a BUY and SELL straddle. The moment one side needs recovery it **commits to that side and closes
+the other** (no both-sides stacking). Recovery adds Fibonacci lots until the basket closes in profit.
+Order-block & liquidity filters avoid poor entries.
+
+**Key settings**
+
+| Setting | Default | Notes |
+|---------|---------|-------|
+| `InpTPDist` | `0.40` | Basket take-profit distance (price units) |
+| `InpRecovGap` | `1.20` | Gap between recovery levels |
+| `InpMaxLevels` | `8` | Max recovery levels (lots 0.01→0.37) |
+| `InpUseGuard` | `true` | Emergency drawdown guard on/off |
+| `InpMaxLossPct` | `20.0` | Cut the basket if floating loss exceeds this % of balance |
+| `InpUseOBLQ` | `true` | Order-block / liquidity entry filter |
+| `InpAutoScale` | `false` | Turn **on** only if running on a non-gold instrument |
 
 ---
 
-## Broker / Account Requirements
+## 17BA Kwasheba — XAUUSD M1
 
-- **Broker**: Deriv (MT5)
-- **Symbol**: XAUUSD
-- **Timeframe**: M1
-- **Account type**: Real or Demo (both supported)
-- **Minimum balance recommended**: $500+
+Fast M1 scalper: MA-cross + RSI entries, breakeven + trailing stops, with a shallow 4-level recovery grid.
+Stops auto-widen to your broker's minimum, and lot size is capped so the grid can't balloon.
+
+**Key settings**
+
+| Setting | Default | Notes |
+|---------|---------|-------|
+| `FixedLot` | `0.01` | Base lot. **Keep this small** — 0.80 on gold is huge |
+| `RiskPercent` | `0.0` | Optional: auto-size base lot to % of balance per trade (0 = use FixedLot) |
+| `MaxLot` | `0.50` | Hard cap on **every** order incl. recovery |
+| `MaxRecoveryLevel` | `4` | Max grid layers |
+| `RecoveryMultiply` | `1.5` | Lot multiplier per recovery level |
+| `UseRiskGuard` | `true` | Drawdown + daily-loss guards on/off |
+| `MaxDrawdownPct` | `55.0` | Lower this for safety |
+| `InpAutoScale` | `false` | Scale point distances to chart volatility (non-gold) |
+
+> Sizing note: on gold, **1 lot = 100 oz** (~$80 P/L per $1 move). Start at `FixedLot = 0.01` and only
+> increase once you've tested on demo.
+
+---
+
+## Updating
+
+When a new version ships, re-download your file, replace it in `MQL5\Experts`, recompile (F7), then
+**remove and re-attach** the EA on its chart so MT5 loads the new build.
+
+---
+
+© Bad Apple 17BA Enterprise. For your own use only — do not redistribute.
