@@ -14,11 +14,14 @@
 //|  v1.6: ATR auto-scaling (InpAutoScale) makes the gold-tuned       |
 //|         distances adapt to any instrument's volatility, and a     |
 //|         master InpUseGuard switch to disable the guard entirely.  |
+//|  v1.7: Recovery ladder extended to 12 levels (InpMaxLevels max     |
+//|         12) for deeper averaging on big retracements. Bigger size  |
+//|         at deep levels — keep the drawdown guard on.               |
 //+------------------------------------------------------------------+
 #property copyright "Bad Apple 17BA Enterprise"
 #property link      "https://github.com/jmac17ba/goldscalper-ea"
 #property description "17BA Chakka — XAUUSD straddle + Fibonacci recovery EA"
-#property version   "1.60"
+#property version   "1.70"
 
 #include <Trade\Trade.mqh>
 CTrade trade;
@@ -26,7 +29,7 @@ CTrade trade;
 //--- Core inputs
 input double InpTPDist      = 0.40;  // TP distance in price units (gold-tuned; auto-scaled if InpAutoScale)
 input double InpRecovGap    = 1.20;  // Gap between recovery levels (gold-tuned; auto-scaled if InpAutoScale)
-input int    InpMaxLevels   = 8;     // Max recovery levels (1-8)
+input int    InpMaxLevels   = 12;    // Max recovery levels (1-12). More levels = deeper averaging but much bigger risk
 input int    InpMagic       = 171717;
 input int    InpSlippage    = 30;
 input bool   InpEnableLogs  = true;
@@ -55,7 +58,9 @@ input int    InpLQLookback   = 40;
 input int    InpLQSwingLen   = 4;
 input double InpLQBuffer     = 0.50;
 
-const double FIBLOTS[8] = {0.01, 0.02, 0.03, 0.05, 0.08, 0.13, 0.22, 0.37};
+// Fibonacci recovery lots, extended to 12 levels. Deeper levels grow fast — the
+// last few add real size, so keep the drawdown guard on when running many levels.
+const double FIBLOTS[12] = {0.01, 0.02, 0.03, 0.05, 0.08, 0.13, 0.22, 0.37, 0.59, 0.96, 1.55, 2.51};
 
 // 0 = fresh straddle  |  1 = BUY committed  |  -1 = SELL committed
 int g_committed = 0;
@@ -290,15 +295,15 @@ int OnInit() {
    trade.SetExpertMagicNumber(InpMagic);
    trade.SetDeviationInPoints(InpSlippage);
    trade.SetTypeFilling(ORDER_FILLING_IOC);
-   if (InpMaxLevels < 1 || InpMaxLevels > 8) {
-      Alert("GoldTrap: InpMaxLevels must be 1-8"); return INIT_PARAMETERS_INCORRECT;
+   if (InpMaxLevels < 1 || InpMaxLevels > 12) {
+      Alert("17BA Chakka: InpMaxLevels must be 1-12"); return INIT_PARAMETERS_INCORRECT;
    }
    g_atrHandle = iATR(_Symbol, PERIOD_CURRENT, InpATRPeriod);
    if (InpAutoScale && g_atrHandle == INVALID_HANDLE)
       Print("[17BA Chakka] WARN: ATR handle failed — auto-scale falls back to fixed distances");
    UpdateScaling();
    RecoverState();
-   PrintFormat("[17BA Chakka] v1.6 — MaxLevels=%d  OB/LQ=%s  Guard=%s(%.1f%%)  AutoScale=%s  (recovered state=%d)",
+   PrintFormat("[17BA Chakka] v1.7 — MaxLevels=%d  OB/LQ=%s  Guard=%s(%.1f%%)  AutoScale=%s  (recovered state=%d)",
       InpMaxLevels, InpUseOBLQ ? "ON" : "OFF",
       InpUseGuard ? "ON" : "OFF", InpMaxLossPct, InpAutoScale ? "ON" : "OFF", g_committed);
    return INIT_SUCCEEDED;
