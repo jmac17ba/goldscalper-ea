@@ -41,11 +41,17 @@ Order-block & liquidity filters avoid poor entries.
 |---------|---------|-------|
 | `InpTPDist` | `0.40` | Basket take-profit distance (price units) |
 | `InpRecovGap` | `1.20` | Gap between recovery levels |
-| `InpMaxLevels` | `8` | Max recovery levels (lots 0.01→0.37) |
+| `InpMaxLevels` | `12` | Max recovery levels, 1–12 (lots 0.01 → 2.51). More = deeper averaging but much bigger risk |
 | `InpUseGuard` | `true` | Emergency drawdown guard on/off |
 | `InpMaxLossPct` | `20.0` | Cut the basket if floating loss exceeds this % of balance |
+| `InpUseVolFilter` | `true` | Pause opening NEW straddles when volatility (ATR) is elevated — keeps the grid out of violent trends |
+| `InpMaxATRMult` | `1.8` | "Elevated" = current ATR > this × its recent average |
 | `InpUseOBLQ` | `true` | Order-block / liquidity entry filter |
 | `InpAutoScale` | `false` | Turn **on** only if running on a non-gold instrument |
+
+> Risk dial: for a safer setup keep `InpUseGuard` and `InpUseVolFilter` on and lower `InpMaxLevels`
+> (e.g. 6–8). For full-send, turn the guard off and run 12 levels — understand that with no guard a
+> basket can ride all the way to margin call if price never retraces.
 
 ---
 
