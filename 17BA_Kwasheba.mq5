@@ -7,11 +7,14 @@
 //|  v2.1: ATR auto-scaling (InpAutoScale) adapts the point distances |
 //|         to any instrument's volatility; UseRiskGuard master switch |
 //|         can disable the drawdown + daily-loss guards entirely.     |
+//|  v2.2: Clamp TP/SL/trail/BE to the broker's minimum stop distance  |
+//|         (SYMBOL_TRADE_STOPS_LEVEL) so orders no longer fail with    |
+//|         "invalid stops" (error 10016) on brokers like Deriv.        |
 //+------------------------------------------------------------------+
 #property copyright "Bad Apple 17BA Enterprise — 17BA Kwasheba"
 #property link      "https://github.com/jmac17ba/goldscalper-ea"
 #property description "17BA Kwasheba — XAUUSD M1 scalper with 4-level recovery grid"
-#property version   "2.10"
+#property version   "2.20"
 #property strict
 
 #include <Trade\Trade.mqh>
@@ -85,20 +88,32 @@ void UpdateScaling()
 {
    eTP = TakeProfit; eSL = StopLoss; eRecovDist = RecoveryDistance;
    eBE = BreakevenTrigger; eTrailStart = TrailStart; eTrailStep = TrailStep;
-   if (!InpAutoScale || hATR == INVALID_HANDLE || InpRefATRpts <= 0) return;
-   double atr[];
-   if (CopyBuffer(hATR, 0, 0, 1, atr) > 0 && atr[0] > 0)
+
+   if (InpAutoScale && hATR != INVALID_HANDLE && InpRefATRpts > 0)
    {
-      double point  = SymbolInfoDouble(_Symbol, SYMBOL_POINT);
-      double atrPts = atr[0] / point;
-      double scale  = atrPts / InpRefATRpts;
-      eTP         = (int)MathMax(1, MathRound(TakeProfit       * scale));
-      eSL         = (int)MathMax(1, MathRound(StopLoss         * scale));
-      eRecovDist  = (int)MathMax(1, MathRound(RecoveryDistance * scale));
-      eBE         = (int)MathMax(1, MathRound(BreakevenTrigger * scale));
-      eTrailStart = (int)MathMax(1, MathRound(TrailStart       * scale));
-      eTrailStep  = (int)MathMax(1, MathRound(TrailStep        * scale));
+      double atr[];
+      if (CopyBuffer(hATR, 0, 0, 1, atr) > 0 && atr[0] > 0)
+      {
+         double point  = SymbolInfoDouble(_Symbol, SYMBOL_POINT);
+         double atrPts = atr[0] / point;
+         double scale  = atrPts / InpRefATRpts;
+         eTP         = (int)MathMax(1, MathRound(TakeProfit       * scale));
+         eSL         = (int)MathMax(1, MathRound(StopLoss         * scale));
+         eRecovDist  = (int)MathMax(1, MathRound(RecoveryDistance * scale));
+         eBE         = (int)MathMax(1, MathRound(BreakevenTrigger * scale));
+         eTrailStart = (int)MathMax(1, MathRound(TrailStart       * scale));
+         eTrailStep  = (int)MathMax(1, MathRound(TrailStep        * scale));
+      }
    }
+
+   // Respect the broker's minimum stop distance — otherwise orders/modifies are
+   // rejected with "invalid stops" (error 10016) when TP/SL sit too close to price.
+   int minDist = (int)SymbolInfoInteger(_Symbol, SYMBOL_TRADE_STOPS_LEVEL) + 1;
+   if (eTP         < minDist)     eTP         = minDist;
+   if (eSL         < minDist)     eSL         = minDist;
+   if (eTrailStep  < minDist)     eTrailStep  = minDist;
+   if (eTrailStart < minDist + 1) eTrailStart = minDist + 1;
+   if (eBE         < minDist + 1) eBE         = minDist + 1;
 }
 
 // Stats
