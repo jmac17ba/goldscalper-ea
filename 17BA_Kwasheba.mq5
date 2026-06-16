@@ -1,506 +1,441 @@
 //+------------------------------------------------------------------+
-//|  17BA_Kwasheba.mq5 — Bad Apple 17BA Enterprise                   |
-//|  17BA Kwasheba — FixedVol80-Style M1 Ultra Scalper              |
-//|  Reverse-engineered from: Abang Rimba 600001050 REAL report      |
-//|  Profile: 7274 trades/week | 66% win | 1-min hold | 0.80 lot    |
-//|  WARNING: Max drawdown on original = 55%. Use demo first.        |
-//|  v2.1: ATR auto-scaling (InpAutoScale) adapts the point distances |
-//|         to any instrument's volatility; UseRiskGuard master switch |
-//|         can disable the drawdown + daily-loss guards entirely.     |
-//|  v2.2: Clamp TP/SL/trail/BE to the broker's minimum stop distance  |
-//|         (SYMBOL_TRADE_STOPS_LEVEL) so orders no longer fail with    |
-//|         "invalid stops" (error 10016) on brokers like Deriv.        |
-//|  v2.3: Safe lot sizing — default 0.01 (was 0.80!), optional         |
-//|         RiskPercent auto-lot, and MaxLot hard cap on EVERY order     |
-//|         incl. recovery so the grid can't balloon the position.       |
+//|                                       17BA_Kwasheba.mq5          |
+//|                  Bad Apple 17BA Enterprise — 17BA Kwasheba        |
+//|  Kwasheba now shares CHAKKA'S engine: pending-OCO breakout entry  |
+//|  + Fibonacci recovery basket — but tuned LESS AGGRESSIVE (fewer    |
+//|  levels, wider gap, tighter guard) and MULTI-INSTRUMENT (auto-     |
+//|  scales on any non-gold symbol; gold keeps its fixed numbers).     |
+//|                                                                    |
+//|  Entry: BUY STOP above price (TP up) + SELL STOP below (TP down).  |
+//|  Price breaks one way → that leg fills and rides it; the other is  |
+//|  cancelled (one-cancels-other). The filled side then runs the      |
+//|  recovery basket to its TP or the drawdown guard. Single side only.|
+//|                                                                    |
+//|  NOTE: her old MA+RSI scalper is backed up at                      |
+//|  removed-eas/17BA_Kwasheba_scalper_v2.4_backup.mq5                 |
 //+------------------------------------------------------------------+
-#property copyright "Bad Apple 17BA Enterprise — 17BA Kwasheba"
+#property copyright "Bad Apple 17BA Enterprise"
 #property link      "https://github.com/jmac17ba/goldscalper-ea"
-#property description "17BA Kwasheba — XAUUSD M1 scalper with 4-level recovery grid"
-#property version   "2.30"
-#property strict
+#property description "17BA Kwasheba — pending-OCO breakout + Fibonacci recovery, multi-instrument"
+#property version   "3.00"
 
 #include <Trade\Trade.mqh>
-#include <Trade\PositionInfo.mqh>
-#include <Trade\AccountInfo.mqh>
+CTrade trade;
 
-//──────────────────────────────────────────────────────────────────
-//  INPUTS
-//──────────────────────────────────────────────────────────────────
+//--- Core inputs (LESS AGGRESSIVE than Chakka)
+input double InpTPDist      = 0.40;  // Basket TP distance in price units (gold-tuned; auto-scaled off gold)
+input double InpRecovGap    = 1.50;  // Gap between recovery levels (wider than Chakka = adds less often)
+input int    InpMaxLevels   = 5;     // Max recovery levels (1-12). Tamer than Chakka's 12 → smaller max exposure
+input int    InpMagic       = 8000002; // Distinct from Chakka (171717) — never touches Chakka's trades
+input int    InpSlippage    = 30;
+input bool   InpEnableLogs  = true;
 
-input group "== Core Settings =="
-input double FixedLot         = 0.01;    // Base lot when RiskPercent=0 (0.80 on gold is HUGE — keep this small)
-input double RiskPercent      = 0.0;     // Auto-size base lot to risk this % of balance per trade (0 = use FixedLot)
-input double MaxLot           = 0.50;    // Hard cap on EVERY order incl. recovery — stops the grid ballooning
-input int    TakeProfit       = 8;       // TP in points (~6-8pts reverse-engineered)
-input int    StopLoss         = 14;      // SL in points (~13-15pts reverse-engineered)
-input int    MagicNumber      = 8000001; // EA magic number
-input int    Slippage         = 10;      // Slippage tolerance
+//--- Emergency drawdown guard (tighter than Chakka)
+input bool   InpUseGuard    = true;  // Master switch — turn the drawdown guard off completely
+input double InpMaxLossPct  = 15.0;  // Emergency-close committed basket at this % of balance floating loss
 
-input group "== Frequency Control =="
-input int    MaxOpenTrades    = 5;       // Simultaneous positions (original: high load)
-input int    TradeGapSeconds  = 15;      // Min seconds between new trades
-input bool   TradeWeekends    = false;   // Skip Saturday/Sunday
+//--- Auto-scale (per-instrument). Auto-ON for any NON-gold symbol so the
+//    distances fit that chart's volatility; gold keeps the fixed numbers.
+//    InpAutoScale = force scaling even on gold.
+input bool   InpAutoScale   = false; // Force scaling on gold too (non-gold scales automatically)
+input int    InpATRPeriod   = 14;    // ATR period used for scaling
+input double InpRefATR      = 4.00;  // Reference ATR (price) the fixed distances are tuned at (XAUUSD M15)
 
-input group "== Recovery (Grid) =="
-input bool   UseRecovery      = true;    // Enable grid recovery on loss
-input double RecoveryMultiply = 1.5;     // Lot multiplier on recovery trade
-input int    RecoveryDistance = 10;      // Points away to place recovery order
-input int    MaxRecoveryLevel = 4;       // Max recovery layers (safety cap)
+//--- Volatility filter — pauses NEW straddles when ATR is elevated vs its
+//    recent average (the violent regimes that trap a grid). Baskets unaffected.
+input bool   InpUseVolFilter = true;  // Don't OPEN new straddles when volatility is elevated
+input double InpMaxATRMult   = 1.8;   // "Elevated" = current ATR > this × its recent average
+input int    InpVolLookback  = 100;   // Bars to average ATR over for the volatility baseline
 
-input group "== Risk Management =="
-input bool   UseRiskGuard     = true;   // Master switch — turn the drawdown + daily-loss guards off completely
-input double MaxDrawdownPct   = 55.0;    // Match original (55%). Lower for safety!
-input double MaxDailyLossPct  = 15.0;   // Daily loss % cap
-input bool   UseBreakeven     = true;   // Breakeven at profit
-input int    BreakevenTrigger = 5;      // Points to trigger breakeven
-input bool   UseTrailingStop  = true;   // Trailing stop
-input int    TrailStart       = 6;      // Points profit to start trailing
-input int    TrailStep        = 2;      // Trail step points
+//--- Pending OCO entry. Two STOP orders are SET, not entered: BUY STOP above
+//    price (TP up), SELL STOP below (TP down). Price breaks one way → that
+//    leg fills and rides it; the other is cancelled immediately.
+input double InpEntryGap      = 0.50;  // Distance from price to each pending stop (price units)
 
-input group "== Entry Filters =="
-input bool   UseSpreadFilter  = true;   // Spread gate
-input int    MaxSpread        = 20;     // Max spread (tight for M1 scalp)
-input int    RSI_Period       = 7;      // RSI period (fast for M1)
-input double RSI_OB           = 72.0;   // Overbought threshold
-input double RSI_OS           = 28.0;   // Oversold threshold
-input int    FastMA           = 3;      // Fast MA (very short for M1)
-input int    SlowMA           = 8;      // Slow MA
+//--- Session filter (off by default)
+input bool   InpUseSession = false;
+input int    InpStartHour  = 1;
+input int    InpStopHour   = 23;
 
-input group "== Auto-Scale (per-instrument) =="
-input bool   InpAutoScale     = false;  // Scale point distances to chart volatility (ON for non-gold instruments)
-input int    InpATRPeriod     = 14;     // ATR period used for scaling
-input double InpRefATRpts     = 40.0;   // Reference ATR (in points) the fixed distances are tuned at (XAUUSD M1)
+//--- Order Block + Liquidity filter (gold microstructure; no-op on forex)
+input bool   InpUseOBLQ      = true;
+input int    InpOBLookback   = 60;
+input double InpOBBodyRatio  = 0.55;
+input double InpOBBuffer     = 0.60;
+input int    InpLQLookback   = 40;
+input int    InpLQSwingLen   = 4;
+input double InpLQBuffer     = 0.50;
 
-//──────────────────────────────────────────────────────────────────
-//  GLOBALS
-//──────────────────────────────────────────────────────────────────
+// Fibonacci recovery lots. With InpMaxLevels=5 only the first 5 are used
+// (max single add 0.08) — far tamer than running all 12.
+const double FIBLOTS[12] = {0.01, 0.02, 0.03, 0.05, 0.08, 0.13, 0.22, 0.37, 0.59, 0.96, 1.55, 2.51};
 
-CTrade        trade;
-CPositionInfo posInfo;
-CAccountInfo  account;
+// Active direction:  0 = flat  |  1 = long basket  |  -1 = short basket
+int g_committed = 0;
 
-int    hFastMA, hSlowMA, hRSI;
-int    hATR = INVALID_HANDLE;
-double g_dayStartBalance = 0;
-datetime g_lastDayReset  = 0;
-datetime g_lastTradeTime = 0;
+int    g_atrHandle = INVALID_HANDLE;
+// Effective (possibly auto-scaled) distances — refreshed every tick by UpdateScaling().
+double g_tp, g_gap, g_obBuf, g_lqBuf, g_gap_entry;
 
-// Effective (possibly auto-scaled) point distances — refreshed every tick.
-int    eTP, eSL, eRecovDist, eBE, eTrailStart, eTrailStep;
-
-void UpdateScaling()
-{
-   eTP = TakeProfit; eSL = StopLoss; eRecovDist = RecoveryDistance;
-   eBE = BreakevenTrigger; eTrailStart = TrailStart; eTrailStep = TrailStep;
-
-   if (InpAutoScale && hATR != INVALID_HANDLE && InpRefATRpts > 0)
-   {
-      double atr[];
-      if (CopyBuffer(hATR, 0, 0, 1, atr) > 0 && atr[0] > 0)
-      {
-         double point  = SymbolInfoDouble(_Symbol, SYMBOL_POINT);
-         double atrPts = atr[0] / point;
-         double scale  = atrPts / InpRefATRpts;
-         eTP         = (int)MathMax(1, MathRound(TakeProfit       * scale));
-         eSL         = (int)MathMax(1, MathRound(StopLoss         * scale));
-         eRecovDist  = (int)MathMax(1, MathRound(RecoveryDistance * scale));
-         eBE         = (int)MathMax(1, MathRound(BreakevenTrigger * scale));
-         eTrailStart = (int)MathMax(1, MathRound(TrailStart       * scale));
-         eTrailStep  = (int)MathMax(1, MathRound(TrailStep        * scale));
-      }
-   }
-
-   // Respect the broker's minimum stop distance — otherwise orders/modifies are
-   // rejected with "invalid stops" (error 10016) when TP/SL sit too close to price.
-   int minDist = (int)SymbolInfoInteger(_Symbol, SYMBOL_TRADE_STOPS_LEVEL) + 1;
-   if (eTP         < minDist)     eTP         = minDist;
-   if (eSL         < minDist)     eSL         = minDist;
-   if (eTrailStep  < minDist)     eTrailStep  = minDist;
-   if (eTrailStart < minDist + 1) eTrailStart = minDist + 1;
-   if (eBE         < minDist + 1) eBE         = minDist + 1;
+// Gold keeps its proven fixed numbers; everything else auto-scales so the
+// distances fit that instrument's volatility. InpAutoScale can force gold too.
+bool IsGoldSymbol() {
+   string s = _Symbol;
+   StringToUpper(s);
+   return (StringFind(s, "XAU") >= 0 || StringFind(s, "GOLD") >= 0);
 }
 
-// Stats
-int    g_totalTrades = 0, g_wins = 0, g_losses = 0;
-double g_grossProfit = 0, g_grossLoss = 0;
-
-enum SIGNAL { SIG_NONE, SIG_BUY, SIG_SELL };
-
-//──────────────────────────────────────────────────────────────────
-//  INIT
-//──────────────────────────────────────────────────────────────────
-
-int OnInit()
-{
-   trade.SetExpertMagicNumber(MagicNumber);
-   trade.SetDeviationInPoints(Slippage);
-   trade.SetTypeFilling(ORDER_FILLING_IOC);
-
-   // M1 indicators — fast periods to match 1-min scalp profile
-   hFastMA = iMA(_Symbol, PERIOD_M1, FastMA, 0, MODE_EMA, PRICE_CLOSE);
-   hSlowMA = iMA(_Symbol, PERIOD_M1, SlowMA, 0, MODE_EMA, PRICE_CLOSE);
-   hRSI    = iRSI(_Symbol, PERIOD_M1, RSI_Period, PRICE_CLOSE);
-
-   if (hFastMA == INVALID_HANDLE || hSlowMA == INVALID_HANDLE || hRSI == INVALID_HANDLE)
-   { Print("ERROR: Indicator init failed"); return INIT_FAILED; }
-
-   hATR = iATR(_Symbol, PERIOD_M1, InpATRPeriod);
-   if (InpAutoScale && hATR == INVALID_HANDLE)
-      Print("WARN: ATR handle failed — auto-scale falls back to fixed point distances");
-   UpdateScaling();
-
-   g_dayStartBalance = account.Balance();
-   g_lastDayReset    = iTime(_Symbol, PERIOD_D1, 0);
-
-   string lotMode = (RiskPercent > 0) ? StringFormat("Risk %.2f%% (~%.2f lot)", RiskPercent, CalcLot(eSL))
-                                      : StringFormat("Fixed %.2f lot", FixedLot);
-   Print("17BA Kwasheba v2.3 | TP:", eTP, "pts | SL:", eSL, "pts | Lot: ", lotMode,
-         " | MaxLot:", MaxLot, " | broker minStop:", SymbolInfoInteger(_Symbol, SYMBOL_TRADE_STOPS_LEVEL), "pts");
-   return INIT_SUCCEEDED;
-}
-
-//──────────────────────────────────────────────────────────────────
-//  DEINIT
-//──────────────────────────────────────────────────────────────────
-
-void OnDeinit(const int reason)
-{
-   IndicatorRelease(hFastMA);
-   IndicatorRelease(hSlowMA);
-   IndicatorRelease(hRSI);
-   if (hATR != INVALID_HANDLE) IndicatorRelease(hATR);
-
-   double wr = (g_totalTrades > 0) ? (double)g_wins / g_totalTrades * 100 : 0;
-   double pf = (g_grossLoss  != 0) ? g_grossProfit / MathAbs(g_grossLoss) : 0;
-   Print("=== 17BA Kwasheba Session | Trades:", g_totalTrades,
-         " WR:", DoubleToString(wr,1), "%",
-         " PF:", DoubleToString(pf,2),
-         " Net:", DoubleToString(g_grossProfit + g_grossLoss, 2));
-}
-
-//──────────────────────────────────────────────────────────────────
-//  TICK — fires on every price change (no new-bar wait for M1 scalp)
-//──────────────────────────────────────────────────────────────────
-
-void OnTick()
-{
-   ResetDaily();
-   UpdateScaling();
-   if (!PassFilters()) return;
-   ManagePositions();
-
-   // Trade gap — prevent spam
-   if (TimeCurrent() - g_lastTradeTime < TradeGapSeconds) return;
-   if (CountMagicPositions() >= MaxOpenTrades) return;
-
-   SIGNAL sig = GetSignal();
-   if (sig == SIG_BUY)  { OpenTrade(ORDER_TYPE_BUY,  CalcLot(eSL)); g_lastTradeTime = TimeCurrent(); }
-   if (sig == SIG_SELL) { OpenTrade(ORDER_TYPE_SELL, CalcLot(eSL)); g_lastTradeTime = TimeCurrent(); }
-}
-
-//──────────────────────────────────────────────────────────────────
-//  SIGNAL — M1 fast MA cross + RSI confirmation
-//  Negative R:R (small TP / larger SL) → needs 66%+ win rate
-//  Entry on ANY micro-trend impulse, RSI avoids extremes
-//──────────────────────────────────────────────────────────────────
-
-SIGNAL GetSignal()
-{
-   double fast[2], slow[2], rsi[1];
-   if (CopyBuffer(hFastMA, 0, 0, 2, fast) < 2) return SIG_NONE;
-   if (CopyBuffer(hSlowMA, 0, 0, 2, slow) < 2) return SIG_NONE;
-   if (CopyBuffer(hRSI,    0, 0, 1, rsi)  < 1) return SIG_NONE;
-
-   // Cross on current vs previous bar
-   bool crossUp   = (fast[1] < slow[1]) && (fast[0] > slow[0]);
-   bool crossDown = (fast[1] > slow[1]) && (fast[0] < slow[0]);
-
-   // RSI confirms momentum, avoids chasing exhaustion
-   if (crossUp   && rsi[0] > 35 && rsi[0] < RSI_OB) return SIG_BUY;
-   if (crossDown && rsi[0] < 65 && rsi[0] > RSI_OS) return SIG_SELL;
-   return SIG_NONE;
-}
-
-//──────────────────────────────────────────────────────────────────
-//  LOT SIZING — clamp to broker limits, step, and the MaxLot cap.
-//──────────────────────────────────────────────────────────────────
-
-double NormalizeLot(double lot)
-{
-   double minLot = SymbolInfoDouble(_Symbol, SYMBOL_VOLUME_MIN);
-   double maxLot = SymbolInfoDouble(_Symbol, SYMBOL_VOLUME_MAX);
-   double step   = SymbolInfoDouble(_Symbol, SYMBOL_VOLUME_STEP);
-   if (step <= 0) step = 0.01;
-   lot = MathFloor(lot / step) * step;
-   double cap = (MaxLot > 0) ? MathMin(maxLot, MaxLot) : maxLot;
-   return MathMax(minLot, MathMin(lot, cap));
-}
-
-// Base lot for a new entry: risk-based if RiskPercent>0, else FixedLot. Always capped.
-double CalcLot(int slPoints)
-{
-   double lot = FixedLot;
-   if (RiskPercent > 0)
-   {
-      double tickVal = SymbolInfoDouble(_Symbol, SYMBOL_TRADE_TICK_VALUE);
-      double tickSz  = SymbolInfoDouble(_Symbol, SYMBOL_TRADE_TICK_SIZE);
-      double slPrice = slPoints * SymbolInfoDouble(_Symbol, SYMBOL_POINT);
-      double lossPerLot = (tickSz > 0) ? (slPrice / tickSz) * tickVal : 0;
-      if (lossPerLot > 0)
-         lot = AccountInfoDouble(ACCOUNT_BALANCE) * RiskPercent / 100.0 / lossPerLot;
-   }
-   return NormalizeLot(lot);
-}
-
-//──────────────────────────────────────────────────────────────────
-//  OPEN TRADE
-//──────────────────────────────────────────────────────────────────
-
-void OpenTrade(ENUM_ORDER_TYPE type, double lot)
-{
-   double point = SymbolInfoDouble(_Symbol, SYMBOL_POINT);
-   double ask   = SymbolInfoDouble(_Symbol, SYMBOL_ASK);
-   double bid   = SymbolInfoDouble(_Symbol, SYMBOL_BID);
-   double entry, sl, tp;
-
-   if (type == ORDER_TYPE_BUY)
-   {
-      entry = ask;
-      sl    = NormalizeDouble(entry - eSL * point, _Digits);
-      tp    = NormalizeDouble(entry + eTP * point, _Digits);
-   }
-   else
-   {
-      entry = bid;
-      sl    = NormalizeDouble(entry + eSL * point, _Digits);
-      tp    = NormalizeDouble(entry - eTP * point, _Digits);
-   }
-
-   lot = NormalizeLot(lot);
-
-   bool ok = (type == ORDER_TYPE_BUY)
-      ? trade.Buy(lot, _Symbol, entry, sl, tp, "GS2_B")
-      : trade.Sell(lot, _Symbol, entry, sl, tp, "GS2_S");
-
-   if (!ok) Print("Open FAIL | ", trade.ResultRetcode(), " err:", GetLastError());
-}
-
-//──────────────────────────────────────────────────────────────────
-//  MANAGE POSITIONS — breakeven, trail, recovery grid
-//──────────────────────────────────────────────────────────────────
-
-void ManagePositions()
-{
-   double point = SymbolInfoDouble(_Symbol, SYMBOL_POINT);
-   double ask   = SymbolInfoDouble(_Symbol, SYMBOL_ASK);
-   double bid   = SymbolInfoDouble(_Symbol, SYMBOL_BID);
-
-   for (int i = PositionsTotal() - 1; i >= 0; i--)
-   {
-      if (!posInfo.SelectByIndex(i)) continue;
-      if (posInfo.Magic() != MagicNumber || posInfo.Symbol() != _Symbol) continue;
-
-      ulong  ticket    = posInfo.Ticket();
-      double openPrice = posInfo.PriceOpen();
-      double curSL     = posInfo.StopLoss();
-      double curTP     = posInfo.TakeProfit();
-      string comment   = posInfo.Comment();
-
-      if (posInfo.PositionType() == POSITION_TYPE_BUY)
-      {
-         double pts = (bid - openPrice) / point;
-         if (UseBreakeven && pts >= eBE)
-         {
-            double beSL = NormalizeDouble(openPrice + point, _Digits);
-            if (curSL < beSL) trade.PositionModify(ticket, beSL, curTP);
-         }
-         if (UseTrailingStop && pts >= eTrailStart)
-         {
-            double tSL = NormalizeDouble(bid - eTrailStep * point, _Digits);
-            if (tSL > curSL) trade.PositionModify(ticket, tSL, curTP);
-         }
-      }
-      else
-      {
-         double pts = (openPrice - ask) / point;
-         if (UseBreakeven && pts >= eBE)
-         {
-            double beSL = NormalizeDouble(openPrice - point, _Digits);
-            if (curSL > beSL || curSL == 0) trade.PositionModify(ticket, beSL, curTP);
-         }
-         if (UseTrailingStop && pts >= eTrailStart)
-         {
-            double tSL = NormalizeDouble(ask + eTrailStep * point, _Digits);
-            if (tSL < curSL || curSL == 0) trade.PositionModify(ticket, tSL, curTP);
-         }
-      }
+void UpdateScaling() {
+   g_tp = InpTPDist; g_gap = InpRecovGap; g_obBuf = InpOBBuffer; g_lqBuf = InpLQBuffer;
+   g_gap_entry = InpEntryGap;
+   bool useScale = (InpAutoScale || !IsGoldSymbol());
+   if (!useScale || g_atrHandle == INVALID_HANDLE || InpRefATR <= 0) return;
+   double atr[];
+   if (CopyBuffer(g_atrHandle, 0, 0, 1, atr) > 0 && atr[0] > 0) {
+      double scale = atr[0] / InpRefATR;
+      g_tp        = InpTPDist    * scale;
+      g_gap       = InpRecovGap  * scale;
+      g_obBuf     = InpOBBuffer  * scale;
+      g_lqBuf     = InpLQBuffer  * scale;
+      g_gap_entry = InpEntryGap  * scale;
    }
 }
 
-//──────────────────────────────────────────────────────────────────
-//  RECOVERY GRID — places a larger recovery trade when position
-//  moves against us by RecoveryDistance points.
-//  This is what drives the high trade frequency + 55% drawdown.
-//──────────────────────────────────────────────────────────────────
+// TRUE when current ATR is elevated vs its recent average — only gates NEW entries.
+bool VolElevated() {
+   if (!InpUseVolFilter || g_atrHandle == INVALID_HANDLE) return false;
+   double atr[];
+   if (CopyBuffer(g_atrHandle, 0, 0, InpVolLookback, atr) < InpVolLookback) return false;
+   double sum = 0;
+   for (int i = 0; i < InpVolLookback; i++) sum += atr[i];
+   double avg = sum / InpVolLookback;
+   return (avg > 0 && atr[0] > InpMaxATRMult * avg);
+}
 
-void CheckRecovery()
-{
-   if (!UseRecovery) return;
-   double point = SymbolInfoDouble(_Symbol, SYMBOL_POINT);
-   double ask   = SymbolInfoDouble(_Symbol, SYMBOL_ASK);
-   double bid   = SymbolInfoDouble(_Symbol, SYMBOL_BID);
+//+------------------------------------------------------------------+
+//  PENDING ORDER HELPERS (the OCO entry straddle)
+//+------------------------------------------------------------------+
+int CountPending() {
+   int n = 0;
+   for (int i = OrdersTotal()-1; i >= 0; i--) {
+      ulong t = OrderGetTicket(i);
+      if (t == 0 || !OrderSelect(t)) continue;
+      if (OrderGetInteger(ORDER_MAGIC) != InpMagic) continue;
+      if (OrderGetString(ORDER_SYMBOL) != _Symbol) continue;
+      n++;
+   }
+   return n;
+}
 
-   for (int i = PositionsTotal() - 1; i >= 0; i--)
-   {
-      if (!posInfo.SelectByIndex(i)) continue;
-      if (posInfo.Magic() != MagicNumber || posInfo.Symbol() != _Symbol) continue;
-
-      string comment  = posInfo.Comment();
-      int    level    = GetRecoveryLevel(comment);
-      if (level >= MaxRecoveryLevel) continue;
-
-      double openPrice = posInfo.PriceOpen();
-      double lossPoints;
-      ENUM_ORDER_TYPE recovType;
-
-      if (posInfo.PositionType() == POSITION_TYPE_BUY)
-      {
-         lossPoints = (openPrice - bid) / point;
-         recovType  = ORDER_TYPE_BUY;
-      }
-      else
-      {
-         lossPoints = (ask - openPrice) / point;
-         recovType  = ORDER_TYPE_SELL;
-      }
-
-      if (lossPoints >= eRecovDist)
-      {
-         double recovLot = NormalizeLot(posInfo.Volume() * RecoveryMultiply);
-
-         // Add recovery tag to distinguish levels
-         string tag = (recovType == ORDER_TYPE_BUY) ? "GS2_RB_" : "GS2_RS_";
-         tag += IntegerToString(level + 1);
-
-         double entry = (recovType == ORDER_TYPE_BUY) ? ask : bid;
-         double sl, tp;
-         if (recovType == ORDER_TYPE_BUY)
-         {
-            sl = NormalizeDouble(entry - eSL * point * (level + 2), _Digits);
-            tp = NormalizeDouble(entry + eTP * point, _Digits);
-            trade.Buy(recovLot, _Symbol, entry, sl, tp, tag);
-         }
-         else
-         {
-            sl = NormalizeDouble(entry + eSL * point * (level + 2), _Digits);
-            tp = NormalizeDouble(entry - eTP * point, _Digits);
-            trade.Sell(recovLot, _Symbol, entry, sl, tp, tag);
-         }
-         g_lastTradeTime = TimeCurrent();
-      }
+void CancelAllPending() {
+   for (int i = OrdersTotal()-1; i >= 0; i--) {
+      ulong t = OrderGetTicket(i);
+      if (t == 0 || !OrderSelect(t)) continue;
+      if (OrderGetInteger(ORDER_MAGIC) != InpMagic) continue;
+      if (OrderGetString(ORDER_SYMBOL) != _Symbol) continue;
+      trade.OrderDelete(t);
    }
 }
 
-int GetRecoveryLevel(string comment)
-{
-   if (StringFind(comment, "GS2_RB_") >= 0 || StringFind(comment, "GS2_RS_") >= 0)
-   {
-      string lvl = StringSubstr(comment, StringLen(comment) - 1, 1);
-      return (int)StringToInteger(lvl);
+// Set the two OCO stops: BUY STOP above price, SELL STOP below — each with
+// its TP in its own direction (buy up, sell down). Levels are CLAMPED to the
+// broker's minimum stop distance so the orders aren't rejected.
+void PlaceStraddle(double ask, double bid) {
+   double minDist = (SymbolInfoInteger(_Symbol, SYMBOL_TRADE_STOPS_LEVEL) + 1)
+                    * SymbolInfoDouble(_Symbol, SYMBOL_POINT);
+   double gap = MathMax(g_gap_entry, minDist);
+   double tp  = MathMax(g_tp,        minDist);
+   double buyPrice  = NormalizeDouble(ask + gap, _Digits);   // above → BUY STOP
+   double sellPrice = NormalizeDouble(bid - gap, _Digits);   // below → SELL STOP
+   bool b = trade.BuyStop (FIBLOTS[0], buyPrice,  _Symbol, 0,
+                           NormalizeDouble(buyPrice  + tp, _Digits), ORDER_TIME_GTC, 0, "17BA Kwasheba");
+   bool s = trade.SellStop(FIBLOTS[0], sellPrice, _Symbol, 0,
+                           NormalizeDouble(sellPrice - tp, _Digits), ORDER_TIME_GTC, 0, "17BA Kwasheba");
+   if (InpEnableLogs)
+      PrintFormat("[17BA Kwasheba] Pending breakout set — BUY STOP %.5f (%s) / SELL STOP %.5f (%s)",
+         buyPrice, b ? "ok" : "FAIL", sellPrice, s ? "ok" : "FAIL");
+}
+
+//+------------------------------------------------------------------+
+int CountPos(ENUM_POSITION_TYPE type) {
+   int n = 0;
+   for (int i = PositionsTotal()-1; i >= 0; i--) {
+      if (!PositionSelectByTicket(PositionGetTicket(i))) continue;
+      if (PositionGetInteger(POSITION_MAGIC) != InpMagic) continue;
+      if (PositionGetString(POSITION_SYMBOL) != _Symbol) continue;
+      if ((ENUM_POSITION_TYPE)PositionGetInteger(POSITION_TYPE) == type) n++;
+   }
+   return n;
+}
+
+double AvgEntry(ENUM_POSITION_TYPE type) {
+   double sumLots = 0, sumVal = 0;
+   for (int i = PositionsTotal()-1; i >= 0; i--) {
+      if (!PositionSelectByTicket(PositionGetTicket(i))) continue;
+      if (PositionGetInteger(POSITION_MAGIC) != InpMagic) continue;
+      if (PositionGetString(POSITION_SYMBOL) != _Symbol) continue;
+      if ((ENUM_POSITION_TYPE)PositionGetInteger(POSITION_TYPE) != type) continue;
+      double lots = PositionGetDouble(POSITION_VOLUME);
+      sumLots += lots;
+      sumVal  += lots * PositionGetDouble(POSITION_PRICE_OPEN);
+   }
+   return sumLots > 0 ? sumVal / sumLots : 0;
+}
+
+double BasketProfit(ENUM_POSITION_TYPE type) {
+   double p = 0;
+   for (int i = PositionsTotal()-1; i >= 0; i--) {
+      if (!PositionSelectByTicket(PositionGetTicket(i))) continue;
+      if (PositionGetInteger(POSITION_MAGIC) != InpMagic) continue;
+      if (PositionGetString(POSITION_SYMBOL) != _Symbol) continue;
+      if ((ENUM_POSITION_TYPE)PositionGetInteger(POSITION_TYPE) != type) continue;
+      p += PositionGetDouble(POSITION_PROFIT) + PositionGetDouble(POSITION_SWAP);
+   }
+   return p;
+}
+
+double LastEntry(ENUM_POSITION_TYPE type) {
+   double   price = 0;
+   datetime lastT = 0;
+   for (int i = PositionsTotal()-1; i >= 0; i--) {
+      if (!PositionSelectByTicket(PositionGetTicket(i))) continue;
+      if (PositionGetInteger(POSITION_MAGIC) != InpMagic) continue;
+      if (PositionGetString(POSITION_SYMBOL) != _Symbol) continue;
+      if ((ENUM_POSITION_TYPE)PositionGetInteger(POSITION_TYPE) != type) continue;
+      datetime t = (datetime)PositionGetInteger(POSITION_TIME);
+      if (t >= lastT) { lastT = t; price = PositionGetDouble(POSITION_PRICE_OPEN); }
+   }
+   return price;
+}
+
+void SetBasketTP(ENUM_POSITION_TYPE type) {
+   double avg = AvgEntry(type);
+   if (avg == 0) return;
+   double tp = (type == POSITION_TYPE_BUY) ? avg + g_tp : avg - g_tp;
+   for (int i = PositionsTotal()-1; i >= 0; i--) {
+      if (!PositionSelectByTicket(PositionGetTicket(i))) continue;
+      ulong ticket = PositionGetTicket(i);
+      if (PositionGetInteger(POSITION_MAGIC) != InpMagic) continue;
+      if (PositionGetString(POSITION_SYMBOL) != _Symbol) continue;
+      if ((ENUM_POSITION_TYPE)PositionGetInteger(POSITION_TYPE) != type) continue;
+      trade.PositionModify(ticket, 0, tp);
+   }
+   if (InpEnableLogs)
+      PrintFormat("[17BA Kwasheba] %s basket TP → %.5f (avg %.5f)",
+         type == POSITION_TYPE_BUY ? "BUY" : "SELL", tp, avg);
+}
+
+void Open(ENUM_ORDER_TYPE orderType, double lots) {
+   double price = (orderType == ORDER_TYPE_BUY)
+      ? SymbolInfoDouble(_Symbol, SYMBOL_ASK)
+      : SymbolInfoDouble(_Symbol, SYMBOL_BID);
+   double tp = (orderType == ORDER_TYPE_BUY) ? price + g_tp : price - g_tp;
+   bool ok = trade.PositionOpen(_Symbol, orderType, lots, price, 0, tp, "17BA Kwasheba");
+   if (InpEnableLogs && ok)
+      PrintFormat("[17BA Kwasheba] Open %s %.2f @ %.5f  TP %.5f",
+         orderType == ORDER_TYPE_BUY ? "BUY" : "SELL", lots, price, tp);
+}
+
+void CloseAllOfType(ENUM_POSITION_TYPE type) {
+   for (int i = PositionsTotal()-1; i >= 0; i--) {
+      if (!PositionSelectByTicket(PositionGetTicket(i))) continue;
+      if (PositionGetInteger(POSITION_MAGIC) != InpMagic) continue;
+      if (PositionGetString(POSITION_SYMBOL) != _Symbol) continue;
+      if ((ENUM_POSITION_TYPE)PositionGetInteger(POSITION_TYPE) == type)
+         trade.PositionClose(PositionGetTicket(i));
+   }
+}
+
+//+------------------------------------------------------------------+
+//  ORDER BLOCK DETECTION
+//+------------------------------------------------------------------+
+double NearestBearishOB(double refPrice) {
+   for (int i = 2; i < InpOBLookback - 2; i++) {
+      double o = iOpen(_Symbol,0,i), c = iClose(_Symbol,0,i);
+      double hi = iHigh(_Symbol,0,i), lo = iLow(_Symbol,0,i);
+      double range = hi - lo;
+      if (range <= 0) continue;
+      if (c > o && (c-o)/range >= InpOBBodyRatio
+         && (iClose(_Symbol,0,i-1) < iOpen(_Symbol,0,i-1)
+          || iClose(_Symbol,0,i+1) < iOpen(_Symbol,0,i+1))
+         && hi > refPrice) return hi;
    }
    return 0;
 }
 
-//──────────────────────────────────────────────────────────────────
-//  FILTERS
-//──────────────────────────────────────────────────────────────────
+double NearestBullishOB(double refPrice) {
+   for (int i = 2; i < InpOBLookback - 2; i++) {
+      double o = iOpen(_Symbol,0,i), c = iClose(_Symbol,0,i);
+      double hi = iHigh(_Symbol,0,i), lo = iLow(_Symbol,0,i);
+      double range = hi - lo;
+      if (range <= 0) continue;
+      if (c < o && (o-c)/range >= InpOBBodyRatio
+         && (iClose(_Symbol,0,i-1) > iOpen(_Symbol,0,i-1)
+          || iClose(_Symbol,0,i+1) > iOpen(_Symbol,0,i+1))
+         && lo < refPrice) return lo;
+   }
+   return 0;
+}
 
-bool PassFilters()
-{
-   // Weekend guard
-   MqlDateTime dt;
-   TimeToStruct(TimeCurrent(), dt);
-   if (!TradeWeekends && (dt.day_of_week == 0 || dt.day_of_week == 6)) return false;
+//+------------------------------------------------------------------+
+//  LIQUIDITY DETECTION
+//+------------------------------------------------------------------+
+double NearestSwingHigh(double refPrice) {
+   int limit = InpLQLookback - InpLQSwingLen;
+   for (int i = InpLQSwingLen; i < limit; i++) {
+      double hi = iHigh(_Symbol,0,i);
+      if (hi <= refPrice) continue;
+      bool isSwing = true;
+      for (int j = 1; j <= InpLQSwingLen && isSwing; j++)
+         if (iHigh(_Symbol,0,i-j) >= hi || iHigh(_Symbol,0,i+j) >= hi) isSwing = false;
+      if (isSwing) return hi;
+   }
+   return 0;
+}
 
-   // Drawdown + daily-loss guards (master switch: UseRiskGuard)
-   if (UseRiskGuard)
-   {
-      double balance = account.Balance();
-      double equity  = account.Equity();
-      double dd      = (balance > 0) ? (balance - equity) / balance * 100 : 0;
-      if (dd >= MaxDrawdownPct)
-      {
-         static datetime lw = 0;
-         if (TimeCurrent() - lw > 300) { Print("PAUSED: DD ", DoubleToString(dd,1), "%"); lw = TimeCurrent(); }
-         return false;
-      }
+double NearestSwingLow(double refPrice) {
+   int limit = InpLQLookback - InpLQSwingLen;
+   for (int i = InpLQSwingLen; i < limit; i++) {
+      double lo = iLow(_Symbol,0,i);
+      if (lo >= refPrice) continue;
+      bool isSwing = true;
+      for (int j = 1; j <= InpLQSwingLen && isSwing; j++)
+         if (iLow(_Symbol,0,i-j) <= lo || iLow(_Symbol,0,i+j) <= lo) isSwing = false;
+      if (isSwing) return lo;
+   }
+   return 0;
+}
 
-      double dailyDD = (g_dayStartBalance > 0) ? (g_dayStartBalance - equity) / g_dayStartBalance * 100 : 0;
-      if (dailyDD >= MaxDailyLossPct)
-      {
-         static datetime lw2 = 0;
-         if (TimeCurrent() - lw2 > 300) { Print("PAUSED: DailyLoss ", DoubleToString(dailyDD,1), "%"); lw2 = TimeCurrent(); }
-         return false;
+bool BuyBlocked(double ask) {
+   if (!InpUseOBLQ) return false;
+   double ob = NearestBearishOB(ask);
+   if (ob > 0 && ask >= ob - g_obBuf) {
+      if (InpEnableLogs) PrintFormat("[17BA Kwasheba] BUY blocked — bearish OB @ %.5f", ob);
+      return true;
+   }
+   double lq = NearestSwingHigh(ask);
+   if (lq > 0 && ask >= lq - g_lqBuf) {
+      if (InpEnableLogs) PrintFormat("[17BA Kwasheba] BUY blocked — swing high LQ @ %.5f", lq);
+      return true;
+   }
+   return false;
+}
+
+bool SellBlocked(double bid) {
+   if (!InpUseOBLQ) return false;
+   double ob = NearestBullishOB(bid);
+   if (ob > 0 && bid <= ob + g_obBuf) {
+      if (InpEnableLogs) PrintFormat("[17BA Kwasheba] SELL blocked — bullish OB @ %.5f", ob);
+      return true;
+   }
+   double lq = NearestSwingLow(bid);
+   if (lq > 0 && bid <= lq + g_lqBuf) {
+      if (InpEnableLogs) PrintFormat("[17BA Kwasheba] SELL blocked — swing low LQ @ %.5f", lq);
+      return true;
+   }
+   return false;
+}
+
+//+------------------------------------------------------------------+
+//  STATE RECOVERY — rebuild g_committed from live positions.
+//+------------------------------------------------------------------+
+void RecoverState() {
+   int nB = CountPos(POSITION_TYPE_BUY);
+   int nS = CountPos(POSITION_TYPE_SELL);
+
+   if (nB == 0 && nS == 0) { g_committed = 0; return; }
+   if (nB > 0 && nS == 0) { g_committed = 1;  SetBasketTP(POSITION_TYPE_BUY);  return; }
+   if (nS > 0 && nB == 0) { g_committed = -1; SetBasketTP(POSITION_TYPE_SELL); return; }
+   if (nB == 1 && nS == 1) { g_committed = 0; return; }
+
+   // Both sides stacked → invalid desync. Flatten and restart fresh.
+   if (InpEnableLogs)
+      PrintFormat("[17BA Kwasheba] Desync on init (%d BUY / %d SELL) — flattening to restart fresh", nB, nS);
+   CloseAllOfType(POSITION_TYPE_BUY);
+   CloseAllOfType(POSITION_TYPE_SELL);
+   g_committed = 0;
+}
+
+//+------------------------------------------------------------------+
+int OnInit() {
+   trade.SetExpertMagicNumber(InpMagic);
+   trade.SetDeviationInPoints(InpSlippage);
+   trade.SetTypeFilling(ORDER_FILLING_IOC);
+   if (InpMaxLevels < 1 || InpMaxLevels > 12) {
+      Alert("17BA Kwasheba: InpMaxLevels must be 1-12"); return INIT_PARAMETERS_INCORRECT;
+   }
+   g_atrHandle = iATR(_Symbol, PERIOD_CURRENT, InpATRPeriod);
+   if ((InpAutoScale || !IsGoldSymbol()) && g_atrHandle == INVALID_HANDLE)
+      Print("[17BA Kwasheba] WARN: ATR handle failed — auto-scale falls back to fixed distances");
+   UpdateScaling();
+   RecoverState();
+   bool scaling = (InpAutoScale || !IsGoldSymbol());
+   PrintFormat("[17BA Kwasheba] v3.0 pending-breakout — %s  EntryGap=%.5f  MaxLevels=%d  Scale=%s  Guard=%s(%.1f%%)  VolFilter=%s  (state=%d)",
+      _Symbol, g_gap_entry, InpMaxLevels, scaling ? "ON(auto)" : "OFF(gold)",
+      InpUseGuard ? "ON" : "OFF", InpMaxLossPct,
+      InpUseVolFilter ? "ON" : "OFF", g_committed);
+   return INIT_SUCCEEDED;
+}
+
+void OnDeinit(const int reason) {
+   if (g_atrHandle != INVALID_HANDLE) IndicatorRelease(g_atrHandle);
+}
+
+//+------------------------------------------------------------------+
+void OnTick() {
+   if (InpUseSession) {
+      MqlDateTime dt;
+      TimeToStruct(TimeCurrent(), dt);
+      if (dt.hour < InpStartHour || dt.hour >= InpStopHour) return;
+   }
+
+   UpdateScaling();
+
+   double ask = SymbolInfoDouble(_Symbol, SYMBOL_ASK);
+   double bid = SymbolInfoDouble(_Symbol, SYMBOL_BID);
+   int nB = CountPos(POSITION_TYPE_BUY);
+   int nS = CountPos(POSITION_TYPE_SELL);
+   int nPend = CountPending();
+   g_committed = (nB > 0) ? 1 : (nS > 0) ? -1 : 0;
+
+   // ── STEP 0: Emergency drawdown guard ──────────────────────────────
+   if (g_committed != 0 && InpUseGuard && InpMaxLossPct > 0) {
+      ENUM_POSITION_TYPE side = (g_committed == 1) ? POSITION_TYPE_BUY : POSITION_TYPE_SELL;
+      double maxLoss = AccountInfoDouble(ACCOUNT_BALANCE) * InpMaxLossPct / 100.0;
+      if (BasketProfit(side) <= -maxLoss) {
+         if (InpEnableLogs)
+            PrintFormat("[17BA Kwasheba] EMERGENCY close %s basket — loss %.2f exceeded cap %.2f (%.1f%% of balance)",
+               side == POSITION_TYPE_BUY ? "BUY" : "SELL", BasketProfit(side), maxLoss, InpMaxLossPct);
+         CloseAllOfType(side);
+         CancelAllPending();
+         g_committed = 0;
+         return;
       }
    }
 
-   // Spread guard
-   if (UseSpreadFilter && SymbolInfoInteger(_Symbol, SYMBOL_SPREAD) > MaxSpread) return false;
-
-   return true;
-}
-
-//──────────────────────────────────────────────────────────────────
-//  HELPERS
-//──────────────────────────────────────────────────────────────────
-
-int CountMagicPositions()
-{
-   int n = 0;
-   for (int i = 0; i < PositionsTotal(); i++)
-      if (posInfo.SelectByIndex(i) && posInfo.Magic() == MagicNumber && posInfo.Symbol() == _Symbol) n++;
-   return n;
-}
-
-void ResetDaily()
-{
-   datetime curDay = iTime(_Symbol, PERIOD_D1, 0);
-   if (curDay != g_lastDayReset)
-   {
-      g_dayStartBalance = account.Balance();
-      g_lastDayReset    = curDay;
-      Print("Day reset | Balance: ", g_dayStartBalance);
+   // ── STEP 1: One leg filled → cancel the opposite pending (OCO) ─────
+   if (g_committed != 0 && nPend > 0) {
+      CancelAllPending();
+      if (InpEnableLogs) Print("[17BA Kwasheba] Entry filled — opposite pending cancelled");
    }
-}
 
-//──────────────────────────────────────────────────────────────────
-//  TRADE EVENTS
-//──────────────────────────────────────────────────────────────────
+   // ── STEP 2: Flat → make sure the pending OCO straddle is set ───────
+   if (g_committed == 0 && nB == 0 && nS == 0) {
+      if (nPend == 0 && !VolElevated()) PlaceStraddle(ask, bid);
+      return;
+   }
 
-void OnTradeTransaction(const MqlTradeTransaction &trans,
-                        const MqlTradeRequest     &req,
-                        const MqlTradeResult      &res)
-{
-   if (trans.type != TRADE_TRANSACTION_DEAL_ADD) return;
-   ulong deal = trans.deal;
-   if (!HistoryDealSelect(deal)) return;
-   if (HistoryDealGetInteger(deal, DEAL_MAGIC) != MagicNumber) return;
-   if (HistoryDealGetInteger(deal, DEAL_ENTRY) != DEAL_ENTRY_OUT) return;
-
-   double profit = HistoryDealGetDouble(deal, DEAL_PROFIT);
-   g_totalTrades++;
-   if (profit >= 0) { g_wins++;   g_grossProfit += profit; }
-   else             { g_losses++; g_grossLoss   += profit; }
-
-   // After a loss, check if recovery grid needed
-   if (profit < 0 && UseRecovery) CheckRecovery();
-
-   double wr = (double)g_wins / g_totalTrades * 100;
-   double pf = (g_grossLoss != 0) ? g_grossProfit / MathAbs(g_grossLoss) : 0;
-
-   if (g_totalTrades % 50 == 0)  // Print every 50 trades (high frequency)
-      Print("Trades:", g_totalTrades, " WR:", DoubleToString(wr,1), "% PF:", DoubleToString(pf,2),
-            " Net:", DoubleToString(g_grossProfit + g_grossLoss,2));
+   // ── STEP 3: Recovery — add to the active basket on an adverse move ─
+   if (nB > 0 && nB < InpMaxLevels) {
+      if (ask <= LastEntry(POSITION_TYPE_BUY) - g_gap && !BuyBlocked(ask)) {
+         Open(ORDER_TYPE_BUY, FIBLOTS[nB]);
+         SetBasketTP(POSITION_TYPE_BUY);
+      }
+   } else if (nS > 0 && nS < InpMaxLevels) {
+      if (bid >= LastEntry(POSITION_TYPE_SELL) + g_gap && !SellBlocked(bid)) {
+         Open(ORDER_TYPE_SELL, FIBLOTS[nS]);
+         SetBasketTP(POSITION_TYPE_SELL);
+      }
+   }
 }
 //+------------------------------------------------------------------+

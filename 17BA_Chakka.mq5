@@ -20,11 +20,20 @@
 //|  v1.8: Volatility filter (InpUseVolFilter) — pauses NEW straddles   |
 //|         when ATR is elevated vs its average (the violent regimes    |
 //|         that stack a grid to blow-up). Existing baskets unaffected. |
+//|  v2.0: DROPPED the hedged straddle (BUY+SELL together cancelled out  |
+//|         and bled spread).                                            |
+//|  v2.1: Pending OCO entry — two levels SET, not entered; first fill   |
+//|         cancels the other. (v2.1 used limits = fade.)                |
+//|  v2.2: Flipped to STOP orders (breakout) so each leg points its own  |
+//|         way like the original: BUY STOP above (TP up), SELL STOP      |
+//|         below (TP down). Price breaks one way → that leg fills and    |
+//|         rides it; the other cancels. Single side then runs the        |
+//|         Fibonacci recovery basket to TP or the drawdown guard.        |
 //+------------------------------------------------------------------+
 #property copyright "Bad Apple 17BA Enterprise"
 #property link      "https://github.com/jmac17ba/goldscalper-ea"
-#property description "17BA Chakka — XAUUSD straddle + Fibonacci recovery EA"
-#property version   "1.80"
+#property description "17BA Chakka — XAUUSD pending-OCO breakout + Fibonacci recovery EA"
+#property version   "2.20"
 
 #include <Trade\Trade.mqh>
 CTrade trade;
@@ -54,6 +63,14 @@ input bool   InpUseVolFilter = true;  // Don't OPEN new straddles when volatilit
 input double InpMaxATRMult   = 1.8;   // "Elevated" = current ATR > this × its recent average
 input int    InpVolLookback  = 100;   // Bars to average ATR over for the volatility baseline
 
+//--- Pending OCO entry. Instead of a live hedged straddle (the two legs
+//    cancel out + bleed spread), Chakka SETS two pending STOP orders around
+//    price, each pointing its own way like the original bot's legs:
+//    BUY STOP above price (TP further up), SELL STOP below (TP further down).
+//    Price breaks one way → that order fills and rides the move; the other
+//    is cancelled immediately (one-cancels-other). Breakout / momentum entry.
+input double InpEntryGap      = 0.50;  // Distance from price to each pending stop (price units)
+
 //--- Session filter (live data shows 24/5 — off by default)
 input bool   InpUseSession = false;
 input int    InpStartHour  = 1;
@@ -72,23 +89,25 @@ input double InpLQBuffer     = 0.50;
 // last few add real size, so keep the drawdown guard on when running many levels.
 const double FIBLOTS[12] = {0.01, 0.02, 0.03, 0.05, 0.08, 0.13, 0.22, 0.37, 0.59, 0.96, 1.55, 2.51};
 
-// 0 = fresh straddle  |  1 = BUY committed  |  -1 = SELL committed
+// Active direction:  0 = flat  |  1 = long basket  |  -1 = short basket
 int g_committed = 0;
 
 int    g_atrHandle = INVALID_HANDLE;
 // Effective (possibly auto-scaled) distances — refreshed every tick by UpdateScaling().
-double g_tp, g_gap, g_obBuf, g_lqBuf;
+double g_tp, g_gap, g_obBuf, g_lqBuf, g_gap_entry;
 
 void UpdateScaling() {
    g_tp = InpTPDist; g_gap = InpRecovGap; g_obBuf = InpOBBuffer; g_lqBuf = InpLQBuffer;
+   g_gap_entry = InpEntryGap;
    if (!InpAutoScale || g_atrHandle == INVALID_HANDLE || InpRefATR <= 0) return;
    double atr[];
    if (CopyBuffer(g_atrHandle, 0, 0, 1, atr) > 0 && atr[0] > 0) {
       double scale = atr[0] / InpRefATR;
-      g_tp    = InpTPDist    * scale;
-      g_gap   = InpRecovGap  * scale;
-      g_obBuf = InpOBBuffer  * scale;
-      g_lqBuf = InpLQBuffer  * scale;
+      g_tp        = InpTPDist    * scale;
+      g_gap       = InpRecovGap  * scale;
+      g_obBuf     = InpOBBuffer  * scale;
+      g_lqBuf     = InpLQBuffer  * scale;
+      g_gap_entry = InpEntryGap  * scale;
    }
 }
 
@@ -102,6 +121,51 @@ bool VolElevated() {
    for (int i = 0; i < InpVolLookback; i++) sum += atr[i];
    double avg = sum / InpVolLookback;
    return (avg > 0 && atr[0] > InpMaxATRMult * avg);
+}
+
+//+------------------------------------------------------------------+
+//  PENDING ORDER HELPERS (the OCO entry straddle)
+//+------------------------------------------------------------------+
+int CountPending() {
+   int n = 0;
+   for (int i = OrdersTotal()-1; i >= 0; i--) {
+      ulong t = OrderGetTicket(i);
+      if (t == 0 || !OrderSelect(t)) continue;
+      if (OrderGetInteger(ORDER_MAGIC) != InpMagic) continue;
+      if (OrderGetString(ORDER_SYMBOL) != _Symbol) continue;
+      n++;
+   }
+   return n;
+}
+
+void CancelAllPending() {
+   for (int i = OrdersTotal()-1; i >= 0; i--) {
+      ulong t = OrderGetTicket(i);
+      if (t == 0 || !OrderSelect(t)) continue;
+      if (OrderGetInteger(ORDER_MAGIC) != InpMagic) continue;
+      if (OrderGetString(ORDER_SYMBOL) != _Symbol) continue;
+      trade.OrderDelete(t);
+   }
+}
+
+// Set the two OCO stops: BUY STOP above price, SELL STOP below — each with
+// its TP in its own direction (buy up, sell down), like the original legs.
+// Levels are CLAMPED to the broker's minimum stop distance so the orders
+// aren't rejected for sitting too close to price.
+void PlaceStraddle(double ask, double bid) {
+   double minDist = (SymbolInfoInteger(_Symbol, SYMBOL_TRADE_STOPS_LEVEL) + 1)
+                    * SymbolInfoDouble(_Symbol, SYMBOL_POINT);
+   double gap = MathMax(g_gap_entry, minDist);
+   double tp  = MathMax(g_tp,        minDist);
+   double buyPrice  = NormalizeDouble(ask + gap, _Digits);   // above → BUY STOP
+   double sellPrice = NormalizeDouble(bid - gap, _Digits);   // below → SELL STOP
+   bool b = trade.BuyStop (FIBLOTS[0], buyPrice,  _Symbol, 0,
+                           NormalizeDouble(buyPrice  + tp, _Digits), ORDER_TIME_GTC, 0, "17BA Chakka");
+   bool s = trade.SellStop(FIBLOTS[0], sellPrice, _Symbol, 0,
+                           NormalizeDouble(sellPrice - tp, _Digits), ORDER_TIME_GTC, 0, "17BA Chakka");
+   if (InpEnableLogs)
+      PrintFormat("[17BA Chakka] Pending breakout set — BUY STOP %.2f (%s) / SELL STOP %.2f (%s)",
+         buyPrice, b ? "ok" : "FAIL", sellPrice, s ? "ok" : "FAIL");
 }
 
 //+------------------------------------------------------------------+
@@ -325,8 +389,8 @@ int OnInit() {
       Print("[17BA Chakka] WARN: ATR handle failed — auto-scale falls back to fixed distances");
    UpdateScaling();
    RecoverState();
-   PrintFormat("[17BA Chakka] v1.8 — MaxLevels=%d  OB/LQ=%s  Guard=%s(%.1f%%)  VolFilter=%s  AutoScale=%s  (recovered state=%d)",
-      InpMaxLevels, InpUseOBLQ ? "ON" : "OFF",
+   PrintFormat("[17BA Chakka] v2.2 pending-breakout — EntryGap=%.2f  MaxLevels=%d  OB/LQ=%s  Guard=%s(%.1f%%)  VolFilter=%s  AutoScale=%s  (state=%d)",
+      InpEntryGap, InpMaxLevels, InpUseOBLQ ? "ON" : "OFF",
       InpUseGuard ? "ON" : "OFF", InpMaxLossPct,
       InpUseVolFilter ? "ON" : "OFF", InpAutoScale ? "ON" : "OFF", g_committed);
    return INIT_SUCCEEDED;
@@ -350,10 +414,12 @@ void OnTick() {
    double bid = SymbolInfoDouble(_Symbol, SYMBOL_BID);
    int nB = CountPos(POSITION_TYPE_BUY);
    int nS = CountPos(POSITION_TYPE_SELL);
+   int nPend = CountPending();
+   g_committed = (nB > 0) ? 1 : (nS > 0) ? -1 : 0;
 
    // ── STEP 0: Emergency drawdown guard ──────────────────────────────
-   // Caps grid blow-up: once a committed basket's floating loss exceeds
-   // InpMaxLossPct of balance, cut it and reset to a fresh straddle.
+   // Once the active basket's floating loss exceeds InpMaxLossPct of
+   // balance, cut it and go flat (and clear any leftover pending).
    if (g_committed != 0 && InpUseGuard && InpMaxLossPct > 0) {
       ENUM_POSITION_TYPE side = (g_committed == 1) ? POSITION_TYPE_BUY : POSITION_TYPE_SELL;
       double maxLoss = AccountInfoDouble(ACCOUNT_BALANCE) * InpMaxLossPct / 100.0;
@@ -362,66 +428,33 @@ void OnTick() {
             PrintFormat("[17BA Chakka] EMERGENCY close %s basket — loss %.2f exceeded cap %.2f (%.1f%% of balance)",
                side == POSITION_TYPE_BUY ? "BUY" : "SELL", BasketProfit(side), maxLoss, InpMaxLossPct);
          CloseAllOfType(side);
+         CancelAllPending();
          g_committed = 0;
          return;
       }
    }
 
-   // ── STEP 1: Detect recovery about to fire on either side ──────────
-   // In fresh mode, the moment one side needs a recovery entry we commit
-   // to that side and immediately close the other (banking its profit).
-   if (g_committed == 0) {
-      bool buyRecovNeeded  = nB > 0
-         && ask <= LastEntry(POSITION_TYPE_BUY)  - g_gap
-         && !BuyBlocked(ask);
-      bool sellRecovNeeded = nS > 0
-         && bid >= LastEntry(POSITION_TYPE_SELL) + g_gap
-         && !SellBlocked(bid);
-
-      if (buyRecovNeeded) {
-         g_committed = 1;
-         CloseAllOfType(POSITION_TYPE_SELL);
-         nS = 0;
-         if (InpEnableLogs) Print("[17BA Chakka] BUY committed — SELL closed");
-      } else if (sellRecovNeeded) {
-         g_committed = -1;
-         CloseAllOfType(POSITION_TYPE_BUY);
-         nB = 0;
-         if (InpEnableLogs) Print("[17BA Chakka] SELL committed — BUY closed");
-      }
+   // ── STEP 1: One leg filled → cancel the opposite pending (OCO) ─────
+   if (g_committed != 0 && nPend > 0) {
+      CancelAllPending();
+      if (InpEnableLogs) Print("[17BA Chakka] Entry filled — opposite pending cancelled");
    }
 
-   // ── STEP 2: Basket TP hit → reset to fresh ────────────────────────
-   if (g_committed == 1 && nB == 0) {
-      g_committed = 0;
-      if (InpEnableLogs) Print("[17BA Chakka] BUY basket TP hit — opening fresh straddle");
-   }
-   if (g_committed == -1 && nS == 0) {
-      g_committed = 0;
-      if (InpEnableLogs) Print("[17BA Chakka] SELL basket TP hit — opening fresh straddle");
-   }
-
-   // ── STEP 3: Fresh straddle ─────────────────────────────────────────
-   // Both sides open at 0.01. Each side renews independently when its
-   // individual TP is hit. Vol filter pauses NEW entries in violent regimes
-   // (existing committed baskets in STEP 4 keep recovering regardless).
-   if (g_committed == 0) {
-      if (!VolElevated()) {
-         if (nB == 0 && !BuyBlocked(ask))  { Open(ORDER_TYPE_BUY,  FIBLOTS[0]); nB = 1; }
-         if (nS == 0 && !SellBlocked(bid)) { Open(ORDER_TYPE_SELL, FIBLOTS[0]); nS = 1; }
-      }
+   // ── STEP 2: Flat → make sure the pending OCO straddle is set ───────
+   // Both levels are SET, not entered. The market fills whichever it
+   // reaches first; STEP 1 then cancels the other. Nothing is hedged.
+   if (g_committed == 0 && nB == 0 && nS == 0) {
+      if (nPend == 0 && !VolElevated()) PlaceStraddle(ask, bid);
       return;
    }
 
-   // ── STEP 4: Committed recovery ────────────────────────────────────
-   if (g_committed == 1 && nB > 0 && nB < InpMaxLevels) {
+   // ── STEP 3: Recovery — add to the active basket on an adverse move ─
+   if (nB > 0 && nB < InpMaxLevels) {
       if (ask <= LastEntry(POSITION_TYPE_BUY) - g_gap && !BuyBlocked(ask)) {
          Open(ORDER_TYPE_BUY, FIBLOTS[nB]);
          SetBasketTP(POSITION_TYPE_BUY);
       }
-   }
-
-   if (g_committed == -1 && nS > 0 && nS < InpMaxLevels) {
+   } else if (nS > 0 && nS < InpMaxLevels) {
       if (bid >= LastEntry(POSITION_TYPE_SELL) + g_gap && !SellBlocked(bid)) {
          Open(ORDER_TYPE_SELL, FIBLOTS[nS]);
          SetBasketTP(POSITION_TYPE_SELL);

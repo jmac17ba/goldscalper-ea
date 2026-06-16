@@ -1,12 +1,16 @@
 # Bad Apple 17BA — Trading EAs for MetaTrader 5
 
-Two automated Expert Advisors for **XAUUSD (gold)** on **MetaTrader 5**. Buy once from
+Two automated Expert Advisors for **MetaTrader 5**. Buy once from
 [17ba-bad-apple-enterprise.vercel.app](https://17ba-bad-apple-enterprise.vercel.app), download your file, attach, and run.
+
+Both run the same engine: a **pending one-cancels-other (OCO) breakout** entry — a BUY STOP above
+price and a SELL STOP below are *set, not entered*; whichever the market reaches first fills and the
+other is cancelled — followed by a **Fibonacci recovery basket** that closes at a combined take-profit.
 
 | EA | File | Chart | Style |
 |----|------|-------|-------|
-| **17BA Chakka** | `17BA_Chakka.mq5` | XAUUSD **M15** | Exclusive straddle + 8-level Fibonacci recovery |
-| **17BA Kwasheba** | `17BA_Kwasheba.mq5` | XAUUSD **M1** | Fast scalper + 4-level recovery grid |
+| **17BA Chakka** | `17BA_Chakka.mq5` | XAUUSD **M15** | OCO breakout + 12-level Fibonacci recovery (aggressive) |
+| **17BA Kwasheba** | `17BA_Kwasheba.mq5` | **any pair** | OCO breakout + 5-level recovery (tamer, multi-instrument) |
 
 > ⚠️ **Risk warning.** Trading gold is high-risk and can lose money. These EAs use grid/recovery
 > methods that can draw down heavily in strong trends. **No profit is guaranteed.** Test on a **demo
@@ -21,32 +25,36 @@ Two automated Expert Advisors for **XAUUSD (gold)** on **MetaTrader 5**. Buy onc
 2. In MT5: **File → Open Data Folder → MQL5 → Experts**, and copy your `.mq5` file there.
 3. In **MetaEditor**, open the file and press **Compile (F7)** — should be 0 errors.
 4. Back in MT5, in the **Navigator**, right-click **Expert Advisors → Refresh**.
-5. Open the correct chart (**Chakka → XAUUSD M15**, **Kwasheba → XAUUSD M1**).
+5. Open the correct chart (**Chakka → XAUUSD M15**, **Kwasheba → any pair, M1 or M15**).
 6. Drag the EA onto the chart → tick **Allow Algo Trading** → **OK**.
 7. Make sure the toolbar **Algo Trading** button is green. A smiley in the top-right of the chart means it's live.
 
-> One EA per chart. To run both, use two separate charts.
+> One EA per chart. To run both, use two separate charts. After attaching, you'll see a **BUY STOP line
+> above price and a SELL STOP line below** — that's the pending breakout, set and waiting.
 
 ---
 
 ## 17BA Chakka — XAUUSD M15
 
-Opens a BUY and SELL straddle. The moment one side needs recovery it **commits to that side and closes
-the other** (no both-sides stacking). Recovery adds Fibonacci lots until the basket closes in profit.
-Order-block & liquidity filters avoid poor entries.
+When flat, Chakka sets a **BUY STOP above** price and a **SELL STOP below** (each with its own
+take-profit). Price breaks one way → that order fills and rides the move; the opposite pending is
+cancelled. The filled side then runs a **Fibonacci recovery basket** — adding lots on adverse moves —
+until the basket closes at its combined take-profit or the drawdown guard cuts it. Only one direction
+is ever live, so the legs never cancel each other out.
 
 **Key settings**
 
 | Setting | Default | Notes |
 |---------|---------|-------|
+| `InpEntryGap` | `0.50` | Distance from price to each pending BUY/SELL STOP |
 | `InpTPDist` | `0.40` | Basket take-profit distance (price units) |
 | `InpRecovGap` | `1.20` | Gap between recovery levels |
 | `InpMaxLevels` | `12` | Max recovery levels, 1–12 (lots 0.01 → 2.51). More = deeper averaging but much bigger risk |
 | `InpUseGuard` | `true` | Emergency drawdown guard on/off |
 | `InpMaxLossPct` | `20.0` | Cut the basket if floating loss exceeds this % of balance |
-| `InpUseVolFilter` | `true` | Pause opening NEW straddles when volatility (ATR) is elevated — keeps the grid out of violent trends |
+| `InpUseVolFilter` | `true` | Pause setting NEW pendings when volatility (ATR) is elevated |
 | `InpMaxATRMult` | `1.8` | "Elevated" = current ATR > this × its recent average |
-| `InpUseOBLQ` | `true` | Order-block / liquidity entry filter |
+| `InpUseOBLQ` | `true` | Order-block / liquidity recovery filter |
 | `InpAutoScale` | `false` | Turn **on** only if running on a non-gold instrument |
 
 > Risk dial: for a safer setup keep `InpUseGuard` and `InpUseVolFilter` on and lower `InpMaxLevels`
@@ -55,26 +63,28 @@ Order-block & liquidity filters avoid poor entries.
 
 ---
 
-## 17BA Kwasheba — XAUUSD M1
+## 17BA Kwasheba — any pair
 
-Fast M1 scalper: MA-cross + RSI entries, breakeven + trailing stops, with a shallow 4-level recovery grid.
-Stops auto-widen to your broker's minimum, and lot size is capped so the grid can't balloon.
+Same OCO breakout + Fibonacci recovery engine as Chakka, but **tamer** and **multi-instrument**. Drop
+her on XAUUSD, EURUSD, USDJPY, GBPUSD — anything. On non-gold symbols her distances **auto-scale** to
+that pair's volatility; on gold she keeps the fixed numbers. Stops clamp to your broker's minimum and
+lots normalize to each symbol, so orders aren't rejected.
 
 **Key settings**
 
 | Setting | Default | Notes |
 |---------|---------|-------|
-| `FixedLot` | `0.01` | Base lot. **Keep this small** — 0.80 on gold is huge |
-| `RiskPercent` | `0.0` | Optional: auto-size base lot to % of balance per trade (0 = use FixedLot) |
-| `MaxLot` | `0.50` | Hard cap on **every** order incl. recovery |
-| `MaxRecoveryLevel` | `4` | Max grid layers |
-| `RecoveryMultiply` | `1.5` | Lot multiplier per recovery level |
-| `UseRiskGuard` | `true` | Drawdown + daily-loss guards on/off |
-| `MaxDrawdownPct` | `55.0` | Lower this for safety |
-| `InpAutoScale` | `false` | Scale point distances to chart volatility (non-gold) |
+| `InpEntryGap` | `0.50` | Distance from price to each pending stop (auto-scaled off gold) |
+| `InpTPDist` | `0.40` | Basket take-profit distance |
+| `InpRecovGap` | `1.50` | Gap between recovery levels (wider than Chakka — adds less often) |
+| `InpMaxLevels` | `5` | Max recovery levels (lots 0.01 → 0.08). Far tamer than Chakka's 12 |
+| `InpUseGuard` | `true` | Emergency drawdown guard on/off |
+| `InpMaxLossPct` | `15.0` | Cut the basket if floating loss exceeds this % of balance |
+| `InpUseVolFilter` | `true` | Pause setting NEW pendings when volatility is elevated |
+| `InpAutoScale` | `false` | Non-gold pairs auto-scale anyway; set **on** to force scaling on gold too |
 
-> Sizing note: on gold, **1 lot = 100 oz** (~$80 P/L per $1 move). Start at `FixedLot = 0.01` and only
-> increase once you've tested on demo.
+> Multi-chart: you can run Kwasheba on several pairs at once (one chart each) — each instance only
+> manages its own symbol. Don't run two copies on the *same* symbol (they share one magic number).
 
 ---
 
