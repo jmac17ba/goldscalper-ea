@@ -1,0 +1,391 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>17BA Agent Overwatch</title>
+<style>
+  :root{
+    --bg:#070707; --panel:#0e0e0f; --panel2:#131315; --line:#26262a;
+    --gold:#C9A84C; --terra:#C4956A; --ink:#e8e6df; --mute:#8a8780;
+    --green:#4caf6d; --amber:#d8a93a; --grey:#6b6b70; --red:#c0503f;
+  }
+  *{box-sizing:border-box;margin:0;padding:0}
+  body{
+    background:radial-gradient(900px 600px at 50% -8%,#16140d 0%,var(--bg) 60%);
+    color:var(--ink); font-family:'Segoe UI',Roboto,Helvetica,Arial,sans-serif;
+    min-height:100vh; padding:0 0 60px;
+  }
+  /* ── Header ── */
+  header{
+    border-bottom:1px solid var(--line); padding:18px 26px;
+    display:flex; align-items:center; justify-content:space-between;
+    position:relative; overflow:hidden;
+  }
+  header::after{
+    content:""; position:absolute; left:-40%; bottom:0; height:2px; width:40%;
+    background:linear-gradient(90deg,transparent,var(--gold),transparent);
+    animation:scan 5s linear infinite;
+  }
+  @keyframes scan{0%{left:-40%}100%{left:100%}}
+  .brand{display:flex; align-items:baseline; gap:14px}
+  .brand h1{font-size:20px; letter-spacing:5px; font-weight:700}
+  .brand h1 b{color:var(--gold)}
+  .brand .sub{font-size:11px; letter-spacing:3px; color:var(--mute); text-transform:uppercase}
+  .clock{font-size:12px; color:var(--mute); letter-spacing:2px; text-align:right}
+  .clock b{color:var(--ink); display:block; font-size:15px; letter-spacing:3px}
+
+  /* ── Stat bar ── */
+  .stats{display:flex; gap:0; border-bottom:1px solid var(--line); background:var(--panel)}
+  .stat{flex:1; padding:14px 20px; border-right:1px solid var(--line)}
+  .stat:last-child{border-right:none}
+  .stat .n{font-size:24px; font-weight:700; letter-spacing:1px}
+  .stat .l{font-size:10px; letter-spacing:2px; color:var(--mute); text-transform:uppercase; margin-top:3px}
+  .stat .n.g{color:var(--gold)} .stat .n.t{color:var(--terra)}
+  .stat .n.gr{color:var(--green)}
+
+  /* ── Office floor ── */
+  .floor{max-width:1180px; margin:0 auto; padding:30px 22px 0}
+
+  /* Founder + CoS */
+  .command{display:flex; flex-direction:column; align-items:center; gap:0; margin-bottom:8px}
+  .founder{
+    font-size:11px; letter-spacing:3px; color:var(--mute); text-transform:uppercase;
+    padding-bottom:6px;
+  }
+  .founder b{color:var(--ink)}
+  .conn{width:1px; height:22px; background:var(--line)}
+  .cos{
+    width:min(440px,92%); background:linear-gradient(180deg,#16130b,var(--panel2));
+    border:1px solid var(--gold); border-radius:10px; padding:18px 22px; cursor:pointer;
+    box-shadow:0 0 30px rgba(201,168,76,.12); position:relative; transition:.18s;
+  }
+  .cos:hover{box-shadow:0 0 40px rgba(201,168,76,.25); transform:translateY(-2px)}
+  .cos .crown{font-size:10px; letter-spacing:3px; color:var(--gold); text-transform:uppercase; margin-bottom:8px}
+  .cos h2{font-size:19px; letter-spacing:2px; display:flex; align-items:center; gap:10px}
+  .cos .role{font-size:12px; color:var(--mute); margin-top:6px; line-height:1.5}
+
+  /* Divisions */
+  .divisions{display:grid; grid-template-columns:1fr 1fr; gap:22px; margin-top:26px}
+  @media(max-width:760px){.divisions{grid-template-columns:1fr}}
+  .division{background:var(--panel); border:1px solid var(--line); border-radius:10px; padding:16px}
+  .division > h3{
+    font-size:12px; letter-spacing:3px; text-transform:uppercase; padding-bottom:12px;
+    margin-bottom:14px; border-bottom:1px solid var(--line); display:flex; justify-content:space-between;
+  }
+  .division.trade > h3{color:var(--gold)}
+  .division.brand > h3{color:var(--terra)}
+  .division > h3 span{color:var(--mute); font-size:10px; letter-spacing:1px}
+
+  /* Desk card */
+  .desk{
+    background:var(--panel2); border:1px solid var(--line); border-radius:8px;
+    padding:13px 14px; margin-bottom:11px; cursor:pointer; transition:.15s;
+    display:flex; align-items:flex-start; gap:12px;
+  }
+  .desk:last-child{margin-bottom:0}
+  .desk:hover{border-color:#3a3a40; background:#181819; transform:translateX(2px)}
+  .dot{width:9px; height:9px; border-radius:50%; margin-top:5px; flex:none}
+  .dot.working{background:var(--green); box-shadow:0 0 8px var(--green); animation:pulse 1.6s infinite}
+  .dot.delivered{background:var(--gold); box-shadow:0 0 8px var(--gold)}
+  .dot.standby{background:var(--grey)}
+  .dot.alert{background:var(--red); box-shadow:0 0 8px var(--red); animation:pulse 1s infinite}
+  @keyframes pulse{0%,100%{opacity:1}50%{opacity:.35}}
+  .desk .body{flex:1; min-width:0}
+  .desk .nm{font-size:14px; font-weight:600; letter-spacing:.5px}
+  .desk .rl{font-size:11px; color:var(--mute); margin-top:3px; line-height:1.45}
+  .desk .meta{display:flex; gap:8px; margin-top:8px; flex-wrap:wrap}
+  .tag{font-size:9px; letter-spacing:1px; text-transform:uppercase; padding:3px 7px; border-radius:4px; border:1px solid var(--line); color:var(--mute)}
+  .tag.s-working{color:var(--green); border-color:rgba(76,175,109,.4)}
+  .tag.s-delivered{color:var(--gold); border-color:rgba(201,168,76,.4)}
+  .tag.s-standby{color:var(--grey)}
+  .tag.s-alert{color:var(--red); border-color:rgba(192,80,63,.4)}
+
+  .substack{margin-top:9px; padding-top:9px; border-top:1px dashed var(--line); display:flex; flex-wrap:wrap; gap:6px}
+  .chip{font-size:10px; color:var(--mute); padding:3px 8px; border-radius:12px; background:#0c0c0d; border:1px solid var(--line)}
+
+  /* Activity feed */
+  .feed{max-width:1180px; margin:26px auto 0; padding:0 22px}
+  .feed h3{font-size:12px; letter-spacing:3px; text-transform:uppercase; color:var(--mute); margin-bottom:12px}
+  .feed-box{background:var(--panel); border:1px solid var(--line); border-radius:10px; padding:6px 0; max-height:230px; overflow:auto}
+  .ev{display:flex; gap:12px; padding:9px 18px; font-size:12px; border-bottom:1px solid #161618}
+  .ev:last-child{border-bottom:none}
+  .ev .t{color:var(--mute); flex:none; font-variant-numeric:tabular-nums}
+  .ev .who{color:var(--gold); flex:none; min-width:150px}
+  .ev .who.t-brand{color:var(--terra)}
+  .ev .msg{color:var(--ink)}
+
+  /* Drawer */
+  .scrim{position:fixed; inset:0; background:rgba(0,0,0,.6); opacity:0; pointer-events:none; transition:.2s; z-index:30}
+  .scrim.on{opacity:1; pointer-events:auto}
+  .drawer{
+    position:fixed; top:0; right:0; height:100%; width:min(620px,100%);
+    background:var(--panel); border-left:1px solid var(--gold);
+    transform:translateX(100%); transition:.25s cubic-bezier(.4,0,.2,1); z-index:40;
+    display:flex; flex-direction:column;
+  }
+  .drawer.on{transform:translateX(0)}
+  .dh{padding:22px 26px; border-bottom:1px solid var(--line); position:relative}
+  .dh .x{position:absolute; top:20px; right:22px; cursor:pointer; color:var(--mute); font-size:22px; line-height:1}
+  .dh .x:hover{color:var(--ink)}
+  .dh .dediv{font-size:10px; letter-spacing:3px; text-transform:uppercase; color:var(--gold)}
+  .dh h2{font-size:22px; letter-spacing:1px; margin:8px 0 6px}
+  .dh .drole{font-size:13px; color:var(--mute); line-height:1.55}
+  .dbody{padding:22px 26px; overflow:auto; flex:1}
+  .sec{margin-bottom:22px}
+  .sec h4{font-size:11px; letter-spacing:2px; text-transform:uppercase; color:var(--terra); margin-bottom:9px; padding-bottom:6px; border-bottom:1px solid var(--line)}
+  .sec p{font-size:13px; line-height:1.65; color:#cfccc4; margin-bottom:9px}
+  .sec ul{list-style:none; margin:0}
+  .sec li{font-size:13px; line-height:1.6; color:#cfccc4; padding:5px 0 5px 18px; position:relative}
+  .sec li::before{content:"▸"; position:absolute; left:0; color:var(--gold)}
+  .filelink{font-size:12px; color:var(--gold); font-family:monospace; background:#0c0c0d; border:1px solid var(--line); border-radius:6px; padding:8px 12px; display:block; margin-top:4px; word-break:break-all}
+  .kv{display:grid; grid-template-columns:auto 1fr; gap:6px 16px; font-size:12px}
+  .kv .k{color:var(--mute)} .kv .v{color:var(--ink)}
+  .foot{max-width:1180px; margin:30px auto 0; padding:0 22px; font-size:11px; color:var(--mute); letter-spacing:1px; text-align:center; line-height:1.7}
+</style>
+</head>
+<body>
+
+<header>
+  <div class="brand">
+    <h1>17BA <b>AGENT OVERWATCH</b></h1>
+    <span class="sub">Personal Command Floor</span>
+  </div>
+  <div class="clock"><b id="clk">--:--:--</b><span id="dte">—</span></div>
+</header>
+
+<div class="stats">
+  <div class="stat"><div class="n" id="s-total">0</div><div class="l">Agents on Roster</div></div>
+  <div class="stat"><div class="n gr" id="s-active">0</div><div class="l">Active / Working</div></div>
+  <div class="stat"><div class="n g" id="s-deliv">0</div><div class="l">Deliverables Filed</div></div>
+  <div class="stat"><div class="n t" id="s-standby">0</div><div class="l">On Standby</div></div>
+</div>
+
+<div class="floor">
+  <!-- Command -->
+  <div class="command">
+    <div class="founder">FOUNDER &nbsp;·&nbsp; <b>Jahnoi McIntosh</b></div>
+    <div class="conn"></div>
+    <div class="cos" data-agent="cos">
+      <div class="crown">◆ Commanding Authority</div>
+      <h2><span class="dot working" style="margin-top:0"></span> Chief of Staff</h2>
+      <div class="role">Commands and coordinates all divisions. Sets the daily agenda, routes every decision, enforces operating standards. Nothing moves without CoS awareness.</div>
+    </div>
+  </div>
+
+  <!-- Divisions -->
+  <div class="divisions">
+    <div class="division trade">
+      <h3>Trading Division <span>Chakka · Kwasheba</span></h3>
+      <div id="trade-desks"></div>
+    </div>
+    <div class="division brand">
+      <h3>Brand Division <span>Collections · Corefuel · Pod Apple</span></h3>
+      <div id="brand-desks"></div>
+    </div>
+  </div>
+</div>
+
+<!-- Activity feed -->
+<div class="feed">
+  <h3>Activity Log</h3>
+  <div class="feed-box" id="feed"></div>
+</div>
+
+<div class="foot">
+  17BA BAD APPLE ENTERPRISE · Agent Overwatch v1.0<br>
+  Click any desk to open that agent's brief and read their work. Status updates as agents file deliverables.
+</div>
+
+<!-- Drawer -->
+<div class="scrim" id="scrim" onclick="closeDrawer()"></div>
+<div class="drawer" id="drawer">
+  <div class="dh">
+    <span class="x" onclick="closeDrawer()">✕</span>
+    <div class="dediv" id="d-div"></div>
+    <h2 id="d-name"></h2>
+    <div class="drole" id="d-role"></div>
+  </div>
+  <div class="dbody" id="d-body"></div>
+</div>
+
+<script>
+// ── Agent roster ────────────────────────────────────────────────
+const AGENTS = {
+  cos:{
+    div:"Command", name:"Chief of Staff", status:"working",
+    role:"Commands and coordinates all divisions. The direct filter between the Founder and every role below.",
+    cadence:"Daily — continuous", reports:"Founder (directly)",
+    mission:"Own daily operations, route all decisions, enforce operating standards, resolve inter-division conflicts, and position every output for the Founder's attention.",
+    delivered:[
+      "Org chart with full decision-routing table — all decisions flow through CoS",
+      "Daily operations checklist (Trading daily / Brand weekly / Cross-division)"
+    ],
+    doing:[
+      "Holding the line on the v2.0 growth rule — add, never erase",
+      "Routing Code Reviewer fixes → Financial Analyst sign-off → push",
+      "Queuing next wave: Business Strategist + Optimization Architect"
+    ],
+    files:["bad-apple-enterprise/org-chart.md"]
+  },
+  reviewer:{
+    div:"Trading Division", name:"Code Reviewer", status:"delivered",
+    role:"Bug detection, improvement recommendations, code quality across both EAs and the dashboard.",
+    cadence:"On every EA change + weekly audit", reports:"Chief of Staff",
+    mission:"Find what breaks before the market does. Audit every line that touches a live order.",
+    delivered:[
+      "Full audit of Chakka v2.2 + Kwasheba v3.0",
+      "CRITICAL-1 — tick-level double-open on recovery → FIXED (tick guard added)",
+      "CRITICAL-2 — near-zero division on flat bars (Kwasheba OB) → FIXED (min range)",
+      "WARNING-1 — JSON name mismatch breaking dashboard routing → FIXED",
+      "WARNING-5 — throttle clock wrap after reconnect → FIXED (GetTickCount)"
+    ],
+    doing:["Standing by for next EA change to re-audit"],
+    files:["17BA_Chakka.mq5","17BA_Kwasheba.mq5","dashboard/server.py"]
+  },
+  analyst:{
+    div:"Trading Division", name:"Financial Analyst", status:"delivered",
+    role:"Risk and performance framework, capital allocation, P&L tracking.",
+    cadence:"Monthly report + on-demand scenario analysis", reports:"Chief of Staff",
+    mission:"Quantify the risk so the bots never put the enterprise in a hole it can't climb out of.",
+    delivered:[
+      "Risk Framework v1.0 — account sizing for both bots",
+      "Chakka: $50K recommended, $35K floor, ~$21.5K max margin",
+      "Kwasheba: $5K recommended, $3K floor",
+      "Capital formula: Reserve = max(20%, $5K); Chakka 60% / Kwasheba 40%",
+      "The Five Red Lines + quarterly transfer rule (50% above HWM)"
+    ],
+    doing:["Awaiting first month of live data to populate P&L template"],
+    files:["bad-apple-enterprise/trading/risk-framework-v1.md"]
+  },
+  optimizer:{
+    div:"Trading Division", name:"Autonomous Optimization Architect", status:"standby",
+    role:"Circuit breakers, guardrails, safety rules, system resilience.",
+    cadence:"Quarterly review + triggered by drawdown events", reports:"Chief of Staff",
+    mission:"Design the kill switches and guardrails that keep a bad day from becoming a bad month.",
+    delivered:[],
+    doing:["Not yet deployed — queued by CoS for the next wave"],
+    files:[]
+  },
+  guardian:{
+    div:"Brand Division", name:"Brand Guardian", status:"delivered",
+    role:"Identity, voice, visual system, and consistency enforcement.",
+    cadence:"On every new product/content before publish", reports:"Chief of Staff",
+    mission:"Be the fence. Everything inside is Bad Apple; everything outside is not. Protect the heritage and the character canon.",
+    delivered:[
+      "Brand Guardian v1.0 — the full rulebook",
+      "Voice & tone guide (grounded · precise · ancestral) + 10 right / 5 wrong copy examples",
+      "Visual identity: Chakka & Kwasheba palettes, madras & patois heritage rules",
+      "Character canon: the Separation Principle — never in the same frame",
+      "Pre-publication compliance checklist + partnership disqualifiers"
+    ],
+    doing:["Standing by to review next drop / content before publish"],
+    files:["bad-apple-enterprise/brand/brand-guardian-v1.md"]
+  },
+  strategist:{
+    div:"Brand Division", name:"Business Strategist", status:"standby",
+    role:"Market positioning, competitive analysis, growth planning.",
+    cadence:"Quarterly strategy + on demand for major decisions", reports:"Chief of Staff",
+    mission:"Position the ecosystem so the clothing, bots, and academy reinforce each other instead of competing.",
+    delivered:[],
+    doing:["Not yet deployed — queued by CoS for the next wave"],
+    files:[]
+  },
+  marketing:{
+    div:"Brand Division", name:"Marketing Stack", status:"standby",
+    role:"Content, social, email, and growth — a four-agent unit.",
+    cadence:"Continuous once launched", reports:"Chief of Staff",
+    mission:"Turn the brand story into reach and the reach into members.",
+    delivered:[],
+    doing:["Not yet deployed — queued by CoS for the next wave"],
+    sub:["Content Creator","Social Media Strategist","Email Marketing","Growth Hacker"],
+    files:[]
+  }
+};
+
+const ACTIVITY = [
+  {who:"Code Reviewer", div:"trade", msg:"Filed EA audit — 2 criticals, 2 warnings flagged"},
+  {who:"Code Reviewer", div:"trade", msg:"CRITICAL-1 + CRITICAL-2 confirmed fixed and pushed"},
+  {who:"Financial Analyst", div:"trade", msg:"Risk Framework v1.0 filed — account floors set"},
+  {who:"Brand Guardian", div:"brand", msg:"Brand Guardian v1.0 filed — voice + character canon locked"},
+  {who:"Chief of Staff", div:"trade", msg:"Elevated to commanding authority over both divisions"},
+  {who:"Chief of Staff", div:"trade", msg:"Routed Kwasheba spelling correction across all docs"},
+];
+
+// ── Render desks ────────────────────────────────────────────────
+function deskHTML(id,a){
+  const sub = a.sub ? `<div class="substack">${a.sub.map(s=>`<span class="chip">${s}</span>`).join("")}</div>` : "";
+  const dn = a.delivered.length;
+  const dtag = dn ? `<span class="tag">${dn} filed</span>` : "";
+  return `<div class="desk" data-agent="${id}">
+    <span class="dot ${a.status}"></span>
+    <div class="body">
+      <div class="nm">${a.name}</div>
+      <div class="rl">${a.role}</div>
+      <div class="meta"><span class="tag s-${a.status}">${a.status}</span>${dtag}<span class="tag">${a.cadence}</span></div>
+      ${sub}
+    </div>
+  </div>`;
+}
+const tradeIds=["reviewer","analyst","optimizer"], brandIds=["guardian","strategist","marketing"];
+document.getElementById("trade-desks").innerHTML = tradeIds.map(i=>deskHTML(i,AGENTS[i])).join("");
+document.getElementById("brand-desks").innerHTML = brandIds.map(i=>deskHTML(i,AGENTS[i])).join("");
+
+// stats
+const all=Object.values(AGENTS);
+document.getElementById("s-total").textContent = all.length + (AGENTS.marketing.sub.length-1);
+document.getElementById("s-active").textContent = all.filter(a=>a.status==="working").length;
+document.getElementById("s-deliv").textContent = all.reduce((n,a)=>n+a.delivered.length,0);
+document.getElementById("s-standby").textContent = all.filter(a=>a.status==="standby").length;
+
+// feed
+document.getElementById("feed").innerHTML = ACTIVITY.map((e,i)=>{
+  const t = new Date(Date.now()-i*1800000).toLocaleTimeString([], {hour:'2-digit',minute:'2-digit'});
+  return `<div class="ev"><span class="t">${t}</span><span class="who t-${e.div}">${e.who}</span><span class="msg">${e.msg}</span></div>`;
+}).join("");
+
+// ── Drawer ──────────────────────────────────────────────────────
+function openDrawer(id){
+  const a=AGENTS[id]; if(!a) return;
+  document.getElementById("d-div").textContent = a.div;
+  document.getElementById("d-name").textContent = a.name;
+  document.getElementById("d-role").textContent = a.role;
+  let h = "";
+  h += `<div class="sec"><h4>Mission</h4><p>${a.mission}</p></div>`;
+  h += `<div class="sec"><h4>Standing</h4><div class="kv">
+    <span class="k">Status</span><span class="v">${a.status.toUpperCase()}</span>
+    <span class="k">Reports to</span><span class="v">${a.reports}</span>
+    <span class="k">Cadence</span><span class="v">${a.cadence}</span>
+    ${a.sub?`<span class="k">Unit</span><span class="v">${a.sub.join(", ")}</span>`:""}
+  </div></div>`;
+  if(a.delivered.length){
+    h += `<div class="sec"><h4>Delivered</h4><ul>${a.delivered.map(d=>`<li>${d}</li>`).join("")}</ul></div>`;
+  }
+  h += `<div class="sec"><h4>Currently</h4><ul>${a.doing.map(d=>`<li>${d}</li>`).join("")}</ul></div>`;
+  if(a.files.length){
+    h += `<div class="sec"><h4>Their Work — Files</h4>${a.files.map(f=>`<span class="filelink">${f}</span>`).join("")}<p style="margin-top:8px;font-size:11px;color:var(--mute)">Open these in the repo to read the full output.</p></div>`;
+  }
+  document.getElementById("d-body").innerHTML = h;
+  document.getElementById("scrim").classList.add("on");
+  document.getElementById("drawer").classList.add("on");
+}
+function closeDrawer(){
+  document.getElementById("scrim").classList.remove("on");
+  document.getElementById("drawer").classList.remove("on");
+}
+document.addEventListener("click",e=>{
+  const d=e.target.closest("[data-agent]");
+  if(d) openDrawer(d.getAttribute("data-agent"));
+});
+document.addEventListener("keydown",e=>{ if(e.key==="Escape") closeDrawer(); });
+
+// ── Clock ───────────────────────────────────────────────────────
+function tick(){
+  const n=new Date();
+  document.getElementById("clk").textContent = n.toLocaleTimeString();
+  document.getElementById("dte").textContent = n.toLocaleDateString([], {weekday:'short',month:'short',day:'numeric'});
+}
+tick(); setInterval(tick,1000);
+</script>
+</body>
+</html>
