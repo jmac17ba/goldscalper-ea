@@ -1,0 +1,13 @@
+# Local-only tools — these live on the founder's machine, delivered as zips.
+# The public repo stays bot + guide only.
+agent-office/
+agent-overwatch/
+dashboard/
+bad-apple-enterprise/
+brand/
+
+# Local secrets / build cruft
+apikey.txt
+__pycache__/
+*.pyc
+runs/
