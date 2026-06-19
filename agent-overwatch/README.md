@@ -1,37 +1,45 @@
-# 17BA Agent Overwatch
+# 17BA Agent Overwatch — Seating Floor
 
-Your personal command floor — see every agent in the enterprise, their status,
-and read what they've delivered.
+Your personal command floor, laid out like a seating chart. The **Chief of Staff**
+sits at the head desk up front; below is a floor of seats you fill with agents
+and a task when you need them, then clear when the job is done.
 
 ## How to open
 
-Just **double-click `index.html`**. It opens in any browser. No server, no
-Python, nothing to install. It's fully self-contained.
+Just **double-click `index.html`**. Opens in any browser — no server, no
+Python, nothing to install.
 
-(On a phone/tablet: open the file in a browser app, or push it to any free
-static host like GitHub Pages and visit the link.)
+## How it works
 
-## What you see
+- **Head desk** = Chief of Staff (permanent commanding authority). Click it to
+  read the role.
+- **The floor** = 36 seats (desk + chair). An empty seat shows a `+`.
+- **Click an empty seat** → choose an agent from the bench and type the task you
+  want them on → they take the seat, chair lights up in their team colour.
+- **Click a filled seat** → update the task, or **Remove** the agent to free the seat.
+- **Clear Floor** empties every seat at once.
+- **Staffing Log** records every seat / dismiss / reassign action.
 
-- **Founder → Chief of Staff** at the top — CoS is the commanding authority
-  over both divisions.
-- **Trading Division** (left): Code Reviewer, Financial Analyst, Autonomous
-  Optimization Architect.
-- **Brand Division** (right): Brand Guardian, Business Strategist, Marketing Stack.
-- **Status dots**: green = working, gold = deliverable filed, grey = standby.
-- **Stat bar**: roster count, active, deliverables filed, on standby.
-- **Activity log**: recent agent actions.
+The chair colour marks the team:
+- 🟡 Gold — Trading Division
+- 🟤 Terra — Brand Division
+- 🔵 Blue — Build / Tech
+- 🟢 Green — Operations
 
-**Click any desk** to open a brief: that agent's mission, current standing,
-what they've delivered, and the files holding their actual work.
+## The bench
 
-## How it stays current
+The agent picker is grouped by team and includes the core enterprise roles plus
+a wider bench (developers, marketers, analysts, ops) you can pull in for one-off
+tasks. Three agents are pre-seated because they've already filed work: Code
+Reviewer, Financial Analyst, and Brand Guardian.
 
-This is a roster + deliverables view, not a live process monitor — your agents
-run on command and file their work into `bad-apple-enterprise/`. When an agent
-completes a new task, its entry in `index.html` (the `AGENTS` object near the
-top of the `<script>`) gets updated: status, delivered list, and file links.
-The activity log is the `ACTIVITY` array right below it.
+## Saving
 
-This is different from `dashboard/` — that one is the live trading bot monitor.
-This one is the agent HQ.
+Your seating arrangement and the log are saved in the browser on **this device**
+(localStorage). Open it on the same machine and your floor is exactly as you
+left it. To carry it between devices, host the file somewhere both can reach.
+
+---
+
+This is the **agent HQ**. The separate `dashboard/` folder is the **live trading
+bot monitor** — different tool, different job.
