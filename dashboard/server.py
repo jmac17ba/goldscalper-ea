@@ -90,7 +90,7 @@ class Handler(http.server.BaseHTTPRequestHandler):
             "server_time": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
             "mt5_path": str(find_mt5_path()),
             "chakka":   read_bot("17ba_chakka_status.json",   "Chakka"),
-            "quasheba": read_bot("17ba_quasheba_status.json", "Quasheba"),
+            "quasheba": read_bot("17ba_kwasheba_status.json", "Kwasheba"),
         }).encode()
         self.send_response(200)
         self.send_header("Content-Type", "application/json")
@@ -112,7 +112,7 @@ if __name__ == "__main__":
     print(f"  Dashboard : http://localhost:{PORT}")
     print(f"  MT5 path  : {mt5}")
     print(f"  Status    : watching for 17ba_chakka_status.json")
-    print(f"              and 17ba_quasheba_status.json")
+    print(f"              and 17ba_kwasheba_status.json")
     print(f"\n  Press Ctrl+C to stop\n")
     try:
         server.serve_forever()

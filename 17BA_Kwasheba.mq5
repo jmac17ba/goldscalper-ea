@@ -250,11 +250,12 @@ void CloseAllOfType(ENUM_POSITION_TYPE type) {
 //  ORDER BLOCK DETECTION
 //+------------------------------------------------------------------+
 double NearestBearishOB(double refPrice) {
+   double minRange = 5 * SymbolInfoDouble(_Symbol, SYMBOL_POINT);
    for (int i = 2; i < InpOBLookback - 2; i++) {
       double o = iOpen(_Symbol,0,i), c = iClose(_Symbol,0,i);
       double hi = iHigh(_Symbol,0,i), lo = iLow(_Symbol,0,i);
       double range = hi - lo;
-      if (range <= 0) continue;
+      if (range < minRange) continue;
       if (c > o && (c-o)/range >= InpOBBodyRatio
          && (iClose(_Symbol,0,i-1) < iOpen(_Symbol,0,i-1)
           || iClose(_Symbol,0,i+1) < iOpen(_Symbol,0,i+1))
@@ -264,11 +265,12 @@ double NearestBearishOB(double refPrice) {
 }
 
 double NearestBullishOB(double refPrice) {
+   double minRange = 5 * SymbolInfoDouble(_Symbol, SYMBOL_POINT);
    for (int i = 2; i < InpOBLookback - 2; i++) {
       double o = iOpen(_Symbol,0,i), c = iClose(_Symbol,0,i);
       double hi = iHigh(_Symbol,0,i), lo = iLow(_Symbol,0,i);
       double range = hi - lo;
-      if (range <= 0) continue;
+      if (range < minRange) continue;
       if (c < o && (o-c)/range >= InpOBBodyRatio
          && (iClose(_Symbol,0,i-1) > iOpen(_Symbol,0,i-1)
           || iClose(_Symbol,0,i+1) > iOpen(_Symbol,0,i+1))
@@ -428,13 +430,19 @@ void OnTick() {
    }
 
    // ── STEP 3: Recovery — add to the active basket on an adverse move ─
+   // s_lastOpen guards against double-open on fast ticks within the same second.
+   static datetime s_lastOpen = 0;
    if (nB > 0 && nB < InpMaxLevels) {
-      if (ask <= LastEntry(POSITION_TYPE_BUY) - g_gap && !BuyBlocked(ask)) {
+      if (ask <= LastEntry(POSITION_TYPE_BUY) - g_gap && !BuyBlocked(ask)
+          && TimeCurrent() != s_lastOpen) {
+         s_lastOpen = TimeCurrent();
          Open(ORDER_TYPE_BUY, FIBLOTS[nB]);
          SetBasketTP(POSITION_TYPE_BUY);
       }
    } else if (nS > 0 && nS < InpMaxLevels) {
-      if (bid >= LastEntry(POSITION_TYPE_SELL) + g_gap && !SellBlocked(bid)) {
+      if (bid >= LastEntry(POSITION_TYPE_SELL) + g_gap && !SellBlocked(bid)
+          && TimeCurrent() != s_lastOpen) {
+         s_lastOpen = TimeCurrent();
          Open(ORDER_TYPE_SELL, FIBLOTS[nS]);
          SetBasketTP(POSITION_TYPE_SELL);
       }
@@ -446,9 +454,9 @@ void OnTick() {
 //  DASHBOARD — writes JSON to MT5 Common Files for 17BA Command Center
 //+------------------------------------------------------------------+
 void WriteDashboardStatus() {
-   static datetime s_lastWrite = 0;
-   if (TimeCurrent() - s_lastWrite < 3) return;
-   s_lastWrite = TimeCurrent();
+   static uint s_lastWriteMs = 0;
+   if (GetTickCount() - s_lastWriteMs < 3000) return;
+   s_lastWriteMs = GetTickCount();
 
    int nB    = CountPos(POSITION_TYPE_BUY);
    int nS    = CountPos(POSITION_TYPE_SELL);
@@ -477,7 +485,7 @@ void WriteDashboardStatus() {
       atrNow = atrBuf[0];
 
    string json = StringFormat(
-      "{\"ea\":\"Quasheba\",\"version\":\"3.0\",\"magic\":%d,"
+      "{\"ea\":\"Kwasheba\",\"version\":\"3.0\",\"magic\":%d,"
       "\"symbol\":\"%s\",\"timestamp\":\"%s\",\"status\":\"%s\","
       "\"committed\":%d,\"balance\":%.2f,\"equity\":%.2f,"
       "\"floating_pl\":%.2f,\"drawdown_pct\":%.2f,\"guard_pct\":%.1f,"
@@ -493,7 +501,7 @@ void WriteDashboardStatus() {
       SymbolInfoDouble(_Symbol, SYMBOL_ASK),
       recovLevel, InpMaxLevels, nPend, basketPL);
 
-   int fh = FileOpen("17ba_quasheba_status.json",
+   int fh = FileOpen("17ba_kwasheba_status.json",
                      FILE_WRITE|FILE_TXT|FILE_ANSI|FILE_COMMON);
    if (fh != INVALID_HANDLE) { FileWriteString(fh, json); FileClose(fh); }
 }

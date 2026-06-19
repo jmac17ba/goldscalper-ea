@@ -451,13 +451,19 @@ void OnTick() {
    }
 
    // ── STEP 3: Recovery — add to the active basket on an adverse move ─
+   // s_lastOpen guards against double-open on fast ticks within the same second.
+   static datetime s_lastOpen = 0;
    if (nB > 0 && nB < InpMaxLevels) {
-      if (ask <= LastEntry(POSITION_TYPE_BUY) - g_gap && !BuyBlocked(ask)) {
+      if (ask <= LastEntry(POSITION_TYPE_BUY) - g_gap && !BuyBlocked(ask)
+          && TimeCurrent() != s_lastOpen) {
+         s_lastOpen = TimeCurrent();
          Open(ORDER_TYPE_BUY, FIBLOTS[nB]);
          SetBasketTP(POSITION_TYPE_BUY);
       }
    } else if (nS > 0 && nS < InpMaxLevels) {
-      if (bid >= LastEntry(POSITION_TYPE_SELL) + g_gap && !SellBlocked(bid)) {
+      if (bid >= LastEntry(POSITION_TYPE_SELL) + g_gap && !SellBlocked(bid)
+          && TimeCurrent() != s_lastOpen) {
+         s_lastOpen = TimeCurrent();
          Open(ORDER_TYPE_SELL, FIBLOTS[nS]);
          SetBasketTP(POSITION_TYPE_SELL);
       }
@@ -471,9 +477,9 @@ void OnTick() {
 //  across all terminals: %APPDATA%\MetaQuotes\Terminal\Common\Files\
 //+------------------------------------------------------------------+
 void WriteDashboardStatus() {
-   static datetime s_lastWrite = 0;
-   if (TimeCurrent() - s_lastWrite < 3) return;
-   s_lastWrite = TimeCurrent();
+   static uint s_lastWriteMs = 0;
+   if (GetTickCount() - s_lastWriteMs < 3000) return;
+   s_lastWriteMs = GetTickCount();
 
    int nB    = CountPos(POSITION_TYPE_BUY);
    int nS    = CountPos(POSITION_TYPE_SELL);
