@@ -409,6 +409,7 @@ void OnTick() {
          CloseAllOfType(side);
          CancelAllPending();
          g_committed = 0;
+         WriteDashboardStatus();
          return;
       }
    }
@@ -422,6 +423,7 @@ void OnTick() {
    // ── STEP 2: Flat → make sure the pending OCO straddle is set ───────
    if (g_committed == 0 && nB == 0 && nS == 0) {
       if (nPend == 0 && !VolElevated()) PlaceStraddle(ask, bid);
+      WriteDashboardStatus();
       return;
    }
 
@@ -437,5 +439,62 @@ void OnTick() {
          SetBasketTP(POSITION_TYPE_SELL);
       }
    }
+   WriteDashboardStatus();
+}
+
+//+------------------------------------------------------------------+
+//  DASHBOARD — writes JSON to MT5 Common Files for 17BA Command Center
+//+------------------------------------------------------------------+
+void WriteDashboardStatus() {
+   static datetime s_lastWrite = 0;
+   if (TimeCurrent() - s_lastWrite < 3) return;
+   s_lastWrite = TimeCurrent();
+
+   int nB    = CountPos(POSITION_TYPE_BUY);
+   int nS    = CountPos(POSITION_TYPE_SELL);
+   int nPend = CountPending();
+   bool volEl = VolElevated();
+
+   ENUM_POSITION_TYPE side = (g_committed == 1) ? POSITION_TYPE_BUY : POSITION_TYPE_SELL;
+   double basketPL = (g_committed != 0) ? BasketProfit(side) : 0;
+   double balance  = AccountInfoDouble(ACCOUNT_BALANCE);
+   double equity   = AccountInfoDouble(ACCOUNT_EQUITY);
+   double maxLoss  = (InpUseGuard && InpMaxLossPct > 0) ? balance * InpMaxLossPct / 100.0 : 1;
+   double ddPct    = (g_committed != 0 && basketPL < 0 && maxLoss > 0)
+                     ? MathMin(MathAbs(basketPL) / maxLoss * 100.0, 100.0) : 0;
+
+   string st;
+   if      (volEl && g_committed == 0)      st = "PAUSED";
+   else if (g_committed == 0 && nPend > 0)  st = "WATCHING";
+   else if (g_committed == 0)               st = "IDLE";
+   else if (g_committed ==  1)              st = "LONG";
+   else                                     st = "SHORT";
+
+   int recovLevel = (g_committed == 1) ? nB : (g_committed == -1) ? nS : 0;
+
+   double atrBuf[]; double atrNow = 0;
+   if (g_atrHandle != INVALID_HANDLE && CopyBuffer(g_atrHandle, 0, 0, 1, atrBuf) > 0)
+      atrNow = atrBuf[0];
+
+   string json = StringFormat(
+      "{\"ea\":\"Quasheba\",\"version\":\"3.0\",\"magic\":%d,"
+      "\"symbol\":\"%s\",\"timestamp\":\"%s\",\"status\":\"%s\","
+      "\"committed\":%d,\"balance\":%.2f,\"equity\":%.2f,"
+      "\"floating_pl\":%.2f,\"drawdown_pct\":%.2f,\"guard_pct\":%.1f,"
+      "\"atr_current\":%.5f,\"vol_elevated\":%s,"
+      "\"bid\":%.5f,\"ask\":%.5f,"
+      "\"recovery_level\":%d,\"max_levels\":%d,"
+      "\"pending_count\":%d,\"basket_profit\":%.2f}",
+      InpMagic, _Symbol,
+      TimeToString(TimeCurrent(), TIME_DATE|TIME_SECONDS),
+      st, g_committed, balance, equity, equity - balance,
+      ddPct, InpMaxLossPct, atrNow, volEl ? "true" : "false",
+      SymbolInfoDouble(_Symbol, SYMBOL_BID),
+      SymbolInfoDouble(_Symbol, SYMBOL_ASK),
+      recovLevel, InpMaxLevels, nPend, basketPL);
+
+   int fh = FileOpen("17ba_quasheba_status.json",
+                     FILE_WRITE|FILE_TXT|FILE_ANSI|FILE_COMMON);
+   if (fh != INVALID_HANDLE) { FileWriteString(fh, json); FileClose(fh); }
 }
 //+------------------------------------------------------------------+
