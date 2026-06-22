@@ -3,78 +3,70 @@
 <head>
 <meta charset="utf-8"/>
 <meta name="viewport" content="width=device-width, initial-scale=1"/>
-<title>17BA Project Brain — Progress Tree</title>
+<title>17BA Progress Tree</title>
 <style>
   :root{
-    --bg0:#0b0d11; --bg1:#070809; --ink:#e8ecf4; --mut:#7b818e; --dim:#454b58;
-    --line:#1d2028; --card:#0f1116; --red:#ef4444;
+    --bg:#f6f7f3; --ink:#3a3f48; --mut:#9aa0aa; --faint:#e7e9e2; --line:#c8ccc0;
   }
   *{box-sizing:border-box}
   html,body{margin:0;height:100%}
   body{
-    background:radial-gradient(120% 90% at 50% 0%, var(--bg0), var(--bg1));
-    color:var(--ink); font-family:"Segoe UI",Helvetica,Arial,sans-serif;
-    overflow:hidden;
+    background:var(--bg); color:var(--ink);
+    font-family:"Segoe UI",Helvetica,Arial,sans-serif; overflow:hidden;
   }
   header{
-    position:fixed; top:0; left:0; right:0; height:64px; z-index:5;
-    display:flex; align-items:center; gap:18px; padding:0 22px;
-    background:linear-gradient(180deg, rgba(11,13,17,.95), rgba(11,13,17,.55) 70%, transparent);
+    position:fixed; top:0; left:0; right:0; height:58px; z-index:5;
+    display:flex; align-items:center; gap:18px; padding:0 24px;
   }
-  header .title{font-size:19px; font-weight:700; letter-spacing:.2px}
-  header .sub{font-size:12.5px; color:var(--mut); margin-top:1px}
+  header .title{font-size:18px; font-weight:800; letter-spacing:2px; color:#b8442f}
+  header .sub{font-size:11.5px; color:var(--mut); letter-spacing:1px; margin-top:1px}
   header .spacer{flex:1}
   .chips{display:flex; gap:8px}
   .chip{
     font-size:12px; color:var(--mut); border:1px solid var(--line);
-    background:#0e1014; padding:6px 12px; border-radius:20px; cursor:pointer;
+    background:#fff; padding:6px 13px; border-radius:20px; cursor:pointer;
     user-select:none; transition:.15s;
   }
-  .chip:hover{color:var(--ink); border-color:#2b303a}
-  .chip.on{color:#fff; border-color:#3a4150; background:#161a21}
-  .counts{display:flex; gap:14px; font-size:12px; color:var(--mut)}
-  .counts b{color:var(--ink); font-weight:700}
-  .legend{display:flex; gap:16px; position:fixed; left:22px; bottom:16px; z-index:5; font-size:11.5px; color:var(--mut)}
-  .legend span{display:flex; align-items:center; gap:6px}
-  .legend i{width:9px;height:9px;border-radius:50%;display:inline-block}
+  .chip:hover{color:var(--ink)}
+  .chip.on{color:#fff; border-color:#b8442f; background:#b8442f}
   #stage{position:absolute; inset:0}
   svg{width:100%; height:100%; display:block}
-  .branch{transition:opacity .18s, stroke-width .18s; cursor:pointer}
+  .branch{transition:opacity .18s; cursor:pointer}
   .pin,.opt{cursor:pointer}
   .pin-num{font-weight:800; fill:#fff}
-  .ttl{fill:var(--ink); font-weight:700}
+  .ttl{font-weight:800; letter-spacing:.5px}
   .blurb{fill:var(--mut)}
-  .leaf{fill:var(--dim)}
-  .dim{opacity:.18}
+  .pname{fill:#4a4f58; font-weight:600}
+  .leaf{fill:#aeb4bc}
+  .dim{opacity:.16}
   .pulse{transform-box:fill-box; transform-origin:center; animation:pp 1.6s ease-in-out infinite}
-  @keyframes pp{0%,100%{opacity:.35}50%{opacity:1}}
+  @keyframes pp{0%,100%{opacity:.25}50%{opacity:.9}}
   /* side panel */
   #panel{
-    position:fixed; top:64px; right:0; width:340px; bottom:0; z-index:8;
-    background:linear-gradient(180deg,#0e1116,#0b0d11); border-left:1px solid var(--line);
-    transform:translateX(100%); transition:.22s ease; padding:22px; overflow:auto;
+    position:fixed; top:0; right:0; width:330px; bottom:0; z-index:8;
+    background:#fff; border-left:1px solid var(--faint); box-shadow:-12px 0 40px rgba(0,0,0,.06);
+    transform:translateX(100%); transition:.22s ease; padding:24px; overflow:auto;
   }
   #panel.open{transform:none}
-  #panel .pclose{position:absolute; top:14px; right:16px; color:var(--mut); cursor:pointer; font-size:18px}
-  #panel h2{margin:4px 0 2px; font-size:20px}
-  #panel .pp-pillar{font-size:12px; font-weight:700; letter-spacing:1px; text-transform:uppercase}
+  #panel .pclose{position:absolute; top:16px; right:18px; color:var(--mut); cursor:pointer; font-size:18px}
+  #panel h2{margin:6px 0 2px; font-size:21px; color:#2b2f37}
+  #panel .pp-pillar{font-size:11px; font-weight:800; letter-spacing:1.5px}
   #panel .row{display:flex; gap:8px; align-items:center; margin:14px 0 0; font-size:13px; color:var(--mut)}
   #panel .row b{color:var(--ink); font-weight:600}
-  #panel .stat{display:inline-flex; align-items:center; gap:7px; font-size:12.5px; padding:5px 11px; border-radius:20px; border:1px solid var(--line); margin-top:12px}
+  #panel .stat{display:inline-flex; align-items:center; gap:7px; font-size:12.5px; padding:5px 12px; border-radius:20px; margin-top:12px; font-weight:600}
   #panel .files{margin-top:8px}
-  #panel .files .f{display:flex; align-items:center; gap:8px; font-size:12.5px; color:#aab0bd; padding:6px 0; border-bottom:1px solid #14171d}
-  #panel .nextnote{margin-top:18px; padding:12px 14px; border-radius:10px; background:#0c1a10; border:1px solid #173a22; color:#8fe6b0; font-size:12.5px}
-  #panel .empty{margin-top:8px; color:var(--dim); font-size:12.5px; font-style:italic}
+  #panel .files .f{display:flex; align-items:center; gap:8px; font-size:12.5px; color:#5a606c; padding:7px 0; border-bottom:1px solid #f0f1ec}
+  #panel .nextnote{margin-top:18px; padding:12px 14px; border-radius:10px; background:#f0faf2; border:1px solid #cfe9d6; color:#2f8a4e; font-size:12.5px}
+  #panel .empty{margin-top:8px; color:#bcc1c8; font-size:12.5px; font-style:italic}
 </style>
 </head>
 <body>
 <header>
   <div>
-    <div class="title">17BA Project Brain</div>
-    <div class="sub" id="subline">The growing tree · maintained by Claude</div>
+    <div class="title">17BA PROGRESS TREE</div>
+    <div class="sub" id="subline">BAD APPLE ENTERPRISE</div>
   </div>
   <div class="spacer"></div>
-  <div class="counts" id="counts"></div>
   <div class="chips">
     <div class="chip on" data-f="all">All</div>
     <div class="chip" data-f="next">Next steps</div>
@@ -85,14 +77,6 @@
 
 <div id="stage"></div>
 
-<div class="legend">
-  <span><i style="background:#35d07f"></i>Done / Live</span>
-  <span><i style="background:#ffb020"></i>Active</span>
-  <span><i style="background:#6b7280"></i>Draft</span>
-  <span><i style="background:#5b8def"></i>Idea</span>
-  <span><i style="background:#1f6b3a"></i>Next step</span>
-</div>
-
 <div id="panel">
   <div class="pclose" onclick="closePanel()">✕</div>
   <div id="panelBody"></div>
@@ -100,51 +84,55 @@
 
 <script>
 /* ════════════════════════════════════════════════════════════════════
-   DATA — the single source of truth for the tree.
-   Claude maintains this each session: add/expand/remove branches,
-   flip status (done | active | draft | idea), move the next:true marker.
+   DATA — single source of truth. Claude maintains it each session.
+   status: done | active | draft | idea     (next:true = grow this next)
    ════════════════════════════════════════════════════════════════════ */
 const DATA = {
   core: { name:"17BA", sub:"BAD APPLE ENTERPRISE" },
   roots: ["17BA_Chakka.mq5","17BA_Kwasheba.mq5","agent-office/","README.md"],
   pillars: [
-    { n:1, name:"Trading Engine", color:"#35d07f", side:"L", icon:"chart",
+    { n:1, name:"Trading Engine", color:"#2fa45a", side:"L", icon:"chart",
+      blurb:"MQL5 expert advisors — the engine room.",
       projects:[
         { name:"Chakka Bot",   agent:"Reality Checker", status:"done",   files:["17BA_Chakka.mq5"] },
         { name:"Kwasheba Bot", agent:"Code Reviewer",   status:"active", files:["17BA_Kwasheba.mq5"], next:true,
           note:"Certify it like Chakka: balance check, verify safety fixes, compile clean." },
         { name:"Bot #3",       agent:"—",               status:"idea",   files:[] }
       ] },
-    { n:2, name:"Agent Infrastructure", color:"#22d3ee", side:"R", icon:"bot",
+    { n:2, name:"Agent Infrastructure", color:"#1f9bb3", side:"R", icon:"bot",
+      blurb:"The agents and tools that run the shop.",
       projects:[
-        { name:"Agent Office",    agent:"MCP Builder",       status:"done",   files:["server.py","index.html"] },
-        { name:"This Dashboard",  agent:"Frontend Developer",status:"active", files:["dashboard/index.html"] },
-        { name:"Agent Overwatch", agent:"SRE",               status:"draft",  files:["overwatch.py"] }
+        { name:"Agent Office",    agent:"MCP Builder",        status:"done",   files:["server.py","index.html"] },
+        { name:"This Dashboard",  agent:"Frontend Developer", status:"active", files:["dashboard/index.html"] },
+        { name:"Agent Overwatch", agent:"SRE",                status:"draft",  files:["overwatch.py"] }
       ] },
-    { n:3, name:"Brand & Content", color:"#fb923c", side:"L", icon:"brand",
+    { n:3, name:"Brand & Content", color:"#e08529", side:"L", icon:"brand",
+      blurb:"How 17BA looks, sounds, and sells.",
       projects:[
-        { name:"Brand",         agent:"Brand Guardian", status:"draft", files:["brand/guide.md"] },
-        { name:"Bot Sales Page",agent:"Growth Hacker",  status:"draft", files:["sales.html"] }
+        { name:"Brand",          agent:"Brand Guardian", status:"draft", files:["brand/guide.md"] },
+        { name:"Bot Sales Page", agent:"Growth Hacker",  status:"draft", files:["sales.html"] }
       ] },
-    { n:4, name:"The Academy", color:"#a855f7", side:"R", icon:"cap",
+    { n:4, name:"The Academy", color:"#8b46d4", side:"R", icon:"cap",
+      blurb:"Teaching what we build.",
       projects:[
         { name:"The Academy", agent:"Training Designer", status:"idea", files:[] }
       ] },
-    { n:5, name:"The Collections", color:"#ffb020", side:"L", icon:"box",
+    { n:5, name:"The Collections", color:"#d6a312", side:"L", icon:"box",
+      blurb:"Products and drops.",
       projects:[
         { name:"Collection #1", agent:"—", status:"idea", files:[] }
       ] },
-    { n:6, name:"Corefuel", color:"#ef4444", side:"R", icon:"fuel",
+    { n:6, name:"Corefuel", color:"#d83a3a", side:"R", icon:"fuel",
+      blurb:"The financial backbone.",
       projects:[
         { name:"Fuel Source", agent:"—", status:"idea", files:[] }
       ] }
   ]
 };
 
-const STATUS = { done:"#35d07f", active:"#ffb020", draft:"#6b7280", idea:"#5b8def", next:"#1f6b3a" };
+const STATUS = { done:"#2fa45a", active:"#e0a01f", draft:"#aeb4bc", idea:"#5b8def", next:"#e0a01f" };
 const STATUS_LABEL = { done:"Done / Live", active:"Active", draft:"Draft", idea:"Idea" };
 
-/* simple line-icon paths (24x24 viewBox), stroke-based */
 const ICONS = {
   chart:"M4 19h16M6 16l3-4 3 2 4-7",
   bot:  "M9 4h6M12 4v3M6 7h12v9H6zM9 11h.01M15 11h.01M9 19h6",
@@ -154,223 +142,187 @@ const ICONS = {
   fuel: "M5 21V5a2 2 0 012-2h6a2 2 0 012 2v16M5 12h10M17 8l3 3v6a2 2 0 01-4 0"
 };
 
-const W=1440, H=940, cx=720, baseY=864, trunkTop=130;
-const PINX = { L:470, R:970 };
-/* vertical slots per side: index 0 = lowest (n smallest), grows upward */
-const SLOTS = [640, 400, 180];
+const W=1440, H=940, cx=720, baseY=842, trunkTop=120;
+const PINX = { L:560, R:880 };
+const SLOTS = [648, 432, 208];   // index 0 = lowest (n smallest); grows upward
 
 function esc(s){return String(s).replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;");}
 function projColor(p){ return p.next ? STATUS.active : (STATUS[p.status]||STATUS.draft); }
 
-/* layout: assign each pillar a pin (x,y) based on side + order within side */
 function layout(){
-  const byside = {L:[], R:[]};
+  const byside={L:[],R:[]};
   DATA.pillars.slice().sort((a,b)=>a.n-b.n).forEach(p=>byside[p.side].push(p));
   const place=[];
   for(const side of ["L","R"]){
-    byside[side].forEach((p,i)=>{
-      place.push({p, x:PINX[side], y:SLOTS[Math.min(i,SLOTS.length-1)], side});
-    });
+    byside[side].forEach((p,i)=>place.push({p, x:PINX[side], y:SLOTS[Math.min(i,SLOTS.length-1)], side}));
   }
   return place;
 }
-
-function trunkPath(){
-  const my=(baseY+trunkTop)/2, bw=26, tw=9;
-  return `M ${cx-bw} ${baseY} C ${cx-bw} ${my} ${cx-tw-2} ${my+40} ${cx-tw} ${trunkTop} `+
-         `L ${cx+tw} ${trunkTop} C ${cx+tw+2} ${my+40} ${cx+bw} ${my} ${cx+bw} ${baseY} Z`;
+function curve(x1,y1,x2,y2){
+  const mx=(x1+x2)/2;
+  return `M ${x1} ${y1} C ${mx} ${y1} ${mx} ${y2} ${x2} ${y2}`;
 }
-function branchPath(x1,y1,x2,y2){
+function vcurve(x1,y1,x2,y2){
   const my=(y1+y2)/2;
   return `M ${x1} ${y1} C ${x1} ${my} ${x2} ${my} ${x2} ${y2}`;
 }
 
-/* build the whole SVG as a string (pure → usable in Node for verification) */
+function matchFilter(pr,f){ if(f==="all")return true; if(f==="next")return !!pr.next; return pr.status===f; }
+
 function buildSVG(filter){
-  filter = filter||"all";
-  const place = layout();
+  filter=filter||"all";
+  const place=layout();
   const S=[];
   S.push(`<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${W} ${H}" preserveAspectRatio="xMidYMid meet">`);
   S.push(`<defs>
-    <linearGradient id="trunk" x1="0" y1="0" x2="1" y2="0">
-      <stop offset="0%" stop-color="#1c1108"/><stop offset="45%" stop-color="#3a2515"/><stop offset="100%" stop-color="#160e06"/>
-    </linearGradient>
-    <radialGradient id="core" cx="50%" cy="50%" r="50%">
-      <stop offset="0%" stop-color="#ff6868"/><stop offset="100%" stop-color="#b81e1e"/>
-    </radialGradient>
-    <radialGradient id="gnd" cx="50%" cy="50%" r="50%">
-      <stop offset="0%" stop-color="#0c2010"/><stop offset="100%" stop-color="#060d07"/>
-    </radialGradient>
-    <filter id="glow" x="-80%" y="-80%" width="260%" height="260%">
-      <feGaussianBlur stdDeviation="6" result="b"/><feMerge><feMergeNode in="b"/><feMergeNode in="SourceGraphic"/></feMerge>
-    </filter>
-    <filter id="soft" x="-50%" y="-50%" width="200%" height="200%">
-      <feGaussianBlur stdDeviation="2.5" result="b"/><feMerge><feMergeNode in="b"/><feMergeNode in="SourceGraphic"/></feMerge>
-    </filter>
+    <pattern id="hatch" width="22" height="22" patternUnits="userSpaceOnUse" patternTransform="rotate(45)">
+      <line x1="0" y1="0" x2="0" y2="22" stroke="#ecede8" stroke-width="1"/>
+    </pattern>
   </defs>`);
+  S.push(`<rect width="${W}" height="${H}" fill="#f6f7f3"/>`);
+  S.push(`<rect width="${W}" height="${H}" fill="url(#hatch)"/>`);
 
-  // ground + roots
-  S.push(`<ellipse cx="${cx}" cy="${baseY}" rx="300" ry="22" fill="url(#gnd)"/>`);
-  S.push(`<ellipse cx="${cx}" cy="${baseY}" rx="150" ry="11" fill="#0e2810" opacity=".7"/>`);
+  // ── trunk: slim tapered line-art ──
+  S.push(`<path d="${vcurve(cx-7,baseY,cx-3,trunkTop)} L ${cx+3} ${trunkTop} ${vcurve(cx+3,trunkTop,cx+7,baseY).replace('M','L')} Z" fill="#eceee7" stroke="#cfd3c8" stroke-width="1.5"/>`);
+  S.push(`<line x1="${cx}" y1="${baseY-20}" x2="${cx}" y2="${trunkTop+10}" stroke="#dadcd3" stroke-width="1"/>`);
+
+  // ── roots fanning out at the base ──
   const rn=DATA.roots.length;
   DATA.roots.forEach((r,i)=>{
-    const dir = (i - (rn-1)/2);
-    const rx = cx + dir*150, ry = baseY+58;
-    S.push(`<path d="${branchPath(cx, baseY+6, rx, ry)}" stroke="#2a1c10" stroke-width="2" fill="none" opacity=".8"/>`);
-    S.push(`<circle cx="${rx}" cy="${ry}" r="3" fill="#3a2a18"/>`);
-    S.push(`<text x="${rx}" y="${ry+16}" text-anchor="middle" class="leaf" font-size="10">${esc(r)}</text>`);
+    const dir=(i-(rn-1)/2);
+    const rx=cx+dir*165, ry=baseY+60;
+    S.push(`<path d="${vcurve(cx, baseY+4, rx, ry)}" stroke="#cdd1c6" stroke-width="1.6" fill="none"/>`);
+    S.push(`<circle cx="${rx}" cy="${ry}" r="4" fill="#fff" stroke="#c4c9bd" stroke-width="1.5"/>`);
+    S.push(`<text x="${rx}" y="${ry+17}" text-anchor="middle" class="leaf" font-size="10">${esc(r)}</text>`);
   });
 
-  // trunk
-  S.push(`<path d="${trunkPath()}" fill="url(#trunk)"/>`);
-
-  // branches + pins
+  // ── branches + pins ──
   place.forEach((pl,idx)=>{
     const p=pl.p, col=p.color;
-    const attachY = pl.y + 60;
-    const ax = cx + (pl.side==="L" ? -8 : 8);
-    // does any project in this pillar pass the filter?
-    const visible = p.projects.some(pr=>matchFilter(pr,filter));
-    const cls = visible ? "branch" : "branch dim";
-    S.push(`<path class="${cls}" data-i="${idx}" d="${branchPath(ax, attachY, pl.x, pl.y)}" stroke="${col}" stroke-width="4" stroke-opacity=".9" fill="none" stroke-linecap="round" filter="url(#soft)"/>`);
+    const attachY=pl.y+ (pl.y>baseY-260? 40:60);
+    const ax=cx+(pl.side==="L"?-7:7);
+    const visible=p.projects.some(pr=>matchFilter(pr,filter));
+    S.push(`<path class="branch${visible?"":" dim"}" data-i="${idx}" d="${curve(ax,attachY,pl.x,pl.y)}" stroke="${col}" stroke-width="2.4" fill="none" stroke-linecap="round"/>`);
 
-    // project sub-nodes (the "Option" branches), stacked vertically beside the pin on the outer side
-    const outer = pl.side==="L" ? -1 : 1;
-    const tx = pl.x + outer*30;                 // text x near pin (outer)
-    const anchor = pl.side==="L" ? "end" : "start";
-    const optX = pl.x + outer*150;              // where option dots sit
+    const outer=pl.side==="L"?-1:1;
+    const optX=pl.x+outer*150;
+    const anchor=pl.side==="L"?"end":"start";
+
+    // option sub-nodes (projects) stacked below the pin, on the outer side
     p.projects.forEach((pr,j)=>{
-      const oy = pl.y + 44 + j*34;
-      const pcol = projColor(pr);
-      const vis = matchFilter(pr,filter);
-      const og = vis ? "" : ' class="dim"';
-      // connector from pin to option dot
-      S.push(`<path${og} d="${branchPath(pl.x, pl.y+8, optX, oy)}" stroke="${pcol}" stroke-width="1.6" stroke-opacity=".5" fill="none"/>`);
-      S.push(`<g class="opt"${vis?"":' opacity=".18"'} data-i="${idx}" data-j="${j}">`);
-      if(pr.next){ S.push(`<circle class="pulse" cx="${optX}" cy="${oy}" r="9" fill="none" stroke="${STATUS.active}" stroke-width="2"/>`); }
-      S.push(`<circle cx="${optX}" cy="${oy}" r="5" fill="${pcol}" filter="url(#soft)"/>`);
-      const lx = optX + outer*14;
-      S.push(`<text x="${lx}" y="${oy-2}" text-anchor="${anchor}" class="ttl" font-size="12.5">${esc(pr.name)}</text>`);
-      const sub = pr.files.length ? pr.files.join(", ") : (pr.status==="idea"?"→ next step":"no files yet");
-      S.push(`<text x="${lx}" y="${oy+13}" text-anchor="${anchor}" class="leaf" font-size="10.5">${esc(sub)}</text>`);
+      const oy=pl.y+46+j*32;
+      const pcol=projColor(pr);
+      const vis=matchFilter(pr,filter);
+      const g=vis?"":' class="dim"';
+      S.push(`<path${g} d="${vcurve(pl.x, pl.y+6, optX, oy)}" stroke="${col}" stroke-width="1.3" stroke-opacity=".45" fill="none"/>`);
+      S.push(`<g class="opt"${vis?"":' opacity=".16"'} data-i="${idx}" data-j="${j}">`);
+      if(pr.next) S.push(`<circle class="pulse" cx="${optX}" cy="${oy}" r="9" fill="none" stroke="${STATUS.active}" stroke-width="2"/>`);
+      S.push(`<circle cx="${optX}" cy="${oy}" r="5" fill="#fff" stroke="${pcol}" stroke-width="2.4"/>`);
+      const lx=optX+outer*14;
+      S.push(`<text x="${lx}" y="${oy-2}" text-anchor="${anchor}" class="pname" font-size="12">${esc(pr.name)}</text>`);
+      const sub=pr.files.length?pr.files.join(", "):(pr.status==="idea"?"→ next step":"no files yet");
+      S.push(`<text x="${lx}" y="${oy+12}" text-anchor="${anchor}" class="leaf" font-size="10">${esc(sub)}</text>`);
       S.push(`</g>`);
     });
 
-    // pillar pin + title (drawn last so it sits on top)
-    S.push(`<g class="pin" data-i="${idx}"${visible?"":' opacity=".25"'}>`);
-    S.push(`<circle cx="${pl.x}" cy="${pl.y}" r="18" fill="${col}" filter="url(#glow)"/>`);
-    S.push(`<circle cx="${pl.x}" cy="${pl.y}" r="18" fill="none" stroke="#0b0d11" stroke-width="2"/>`);
-    S.push(`<text x="${pl.x}" y="${pl.y+6}" text-anchor="middle" class="pin-num" font-size="16">${p.n}</text>`);
-    // icon + title on outer side
-    const titleX = tx;
-    S.push(`<text x="${titleX}" y="${pl.y-4}" text-anchor="${anchor}" class="ttl" font-size="16">${esc(p.name)}</text>`);
-    const done = p.projects.filter(x=>x.status==="done").length;
-    S.push(`<text x="${titleX}" y="${pl.y+14}" text-anchor="${anchor}" class="blurb" font-size="11.5">${done}/${p.projects.length} built · pillar ${p.n}</text>`);
-    // small icon above title (outer edge)
-    const icoX = pl.side==="L" ? titleX-2 : titleX-22;
-    S.push(`<g transform="translate(${icoX},${pl.y-44}) scale(.85)" fill="none" stroke="${col}" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="${ICONS[p.icon]||ICONS.box}"/></g>`);
+    // title block (icon + colored uppercase title + grey blurb) on the outer side of the pin
+    const tx=pl.x+outer*34;
+    S.push(`<g class="pin" data-i="${idx}"${visible?"":' opacity=".22"'}>`);
+    // icon above title
+    const icoX=pl.side==="L"? tx-22 : tx;
+    S.push(`<g transform="translate(${icoX},${pl.y-58}) scale(.9)" fill="none" stroke="${col}" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="${ICONS[p.icon]||ICONS.box}"/></g>`);
+    S.push(`<text x="${tx}" y="${pl.y-26}" text-anchor="${anchor}" class="ttl" fill="${col}" font-size="15">${esc(p.name.toUpperCase())}</text>`);
+    // blurb (wrap to 2 short lines)
+    wrap(p.blurb, 34).forEach((ln,k)=>{
+      S.push(`<text x="${tx}" y="${pl.y-9+k*13}" text-anchor="${anchor}" class="blurb" font-size="10.5">${esc(ln)}</text>`);
+    });
+    // map-pin marker
+    S.push(pinMarker(pl.x, pl.y, col, p.n));
     S.push(`</g>`);
   });
 
-  // core badge
-  S.push(`<ellipse cx="${cx}" cy="${baseY}" rx="66" ry="28" fill="url(#core)" filter="url(#glow)"/>`);
-  S.push(`<text x="${cx}" y="${baseY-3}" text-anchor="middle" fill="#fff" font-size="22" font-weight="800">${esc(DATA.core.name)}</text>`);
-  S.push(`<text x="${cx}" y="${baseY+14}" text-anchor="middle" fill="#ffd8d8" font-size="8.5" letter-spacing="2">${esc(DATA.core.sub)}</text>`);
+  // ── base node (subtle target) + label ──
+  S.push(`<circle cx="${cx}" cy="${baseY}" r="13" fill="#fff" stroke="#b8442f" stroke-width="2.5"/>`);
+  S.push(`<circle cx="${cx}" cy="${baseY}" r="5" fill="#b8442f"/>`);
+  S.push(`<text x="${cx}" y="${baseY+44}" text-anchor="middle" fill="#b8442f" font-size="15" font-weight="800" letter-spacing="1.5">${esc(DATA.core.name)}</text>`);
 
   S.push(`</svg>`);
   return S.join("");
 }
 
-function matchFilter(pr,filter){
-  if(filter==="all") return true;
-  if(filter==="next") return !!pr.next;
-  return pr.status===filter;
+/* a flat circular map-pin with a small downward point and centered number */
+function pinMarker(x,y,col,num){
+  const p=6;
+  return `<g>`+
+    `<path d="M ${x-13} ${y} A 13 13 0 1 1 ${x+13} ${y} L ${x+p} ${y} L ${x} ${y+13} L ${x-p} ${y} Z" fill="${col}"/>`+
+    `<circle cx="${x}" cy="${y}" r="13" fill="${col}"/>`+
+    `<circle cx="${x}" cy="${y}" r="13" fill="none" stroke="#fff" stroke-width="1.5"/>`+
+    `<text x="${x}" y="${y+5}" text-anchor="middle" class="pin-num" font-size="14">${num}</text>`+
+  `</g>`;
 }
 
-/* ── Node export for verification, browser init otherwise ── */
+function wrap(s,max){
+  const words=String(s).split(" "); const lines=[]; let cur="";
+  for(const w of words){ if((cur+" "+w).trim().length>max){ lines.push(cur.trim()); cur=w; } else cur+=" "+w; }
+  if(cur.trim()) lines.push(cur.trim());
+  return lines.slice(0,2);
+}
+
+/* ── Node export for verification / browser init ── */
 if (typeof module!=="undefined" && module.exports){ module.exports={buildSVG,DATA,layout}; }
 
 if (typeof document!=="undefined"){
   let curFilter="all";
   function render(){
-    document.getElementById("stage").innerHTML = buildSVG(curFilter);
+    document.getElementById("stage").innerHTML=buildSVG(curFilter);
     wire();
-    renderCounts();
-  }
-  function renderCounts(){
-    const all=DATA.pillars.flatMap(p=>p.projects);
-    const c=s=>all.filter(x=>x.status===s).length;
-    document.getElementById("counts").innerHTML =
-      `<span><b>${all.length}</b> projects</span>`+
-      `<span><b>${DATA.pillars.length}</b> pillars</span>`+
-      `<span><b>${c("done")}</b> done</span>`;
-    const nx=all.find(x=>x.next);
-    document.getElementById("subline").textContent =
-      nx ? `Next step → ${nx.name}` : "The growing tree · maintained by Claude";
+    const nx=DATA.pillars.flatMap(p=>p.projects).find(x=>x.next);
+    document.getElementById("subline").textContent = nx?("NEXT STEP → "+nx.name.toUpperCase()):"BAD APPLE ENTERPRISE";
   }
   function wire(){
-    document.querySelectorAll(".pin").forEach(el=>{
+    document.querySelectorAll(".pin,.branch").forEach(el=>{
       el.addEventListener("click",()=>openPillar(+el.dataset.i));
       el.addEventListener("mouseenter",()=>highlight(+el.dataset.i));
-      el.addEventListener("mouseleave",unhighlight);
-    });
-    document.querySelectorAll(".branch").forEach(el=>{
-      el.addEventListener("click",()=>openPillar(+el.dataset.i));
-      el.addEventListener("mouseenter",()=>highlight(+el.dataset.i));
-      el.addEventListener("mouseleave",unhighlight);
+      el.addEventListener("mouseleave",()=>render());
     });
     document.querySelectorAll(".opt").forEach(el=>{
       el.addEventListener("click",e=>{e.stopPropagation();openProject(+el.dataset.i,+el.dataset.j);});
     });
   }
-  function highlight(i){
-    document.querySelectorAll(".branch").forEach(b=>{ if(+b.dataset.i!==i) b.classList.add("dim"); });
-  }
-  function unhighlight(){ render(); }
-
+  function highlight(i){ document.querySelectorAll(".branch").forEach(b=>{ if(+b.dataset.i!==i) b.classList.add("dim"); }); }
   function openPillar(i){
-    const p=DATA.pillars.slice().sort((a,b)=>a.n-b.n)[i] || DATA.pillars[i];
-    // layout order matches place[] which sorts by n within side; map via layout
-    const pl=layout()[i]; const pil=pl.p;
-    let h=`<div class="pp-pillar" style="color:${pil.color}">PILLAR ${pil.n} · ${esc(pil.name).toUpperCase()}</div>`;
+    const pil=layout()[i].p;
+    let h=`<div class="pp-pillar" style="color:${pil.color}">PILLAR ${pil.n} · ${esc(pil.name.toUpperCase())}</div>`;
     h+=`<h2>${esc(pil.name)}</h2>`;
-    h+=`<div class="row">Projects: <b>${pil.projects.length}</b> · Built: <b>${pil.projects.filter(x=>x.status==="done").length}</b></div>`;
+    h+=`<div class="row" style="margin-top:4px">${esc(pil.blurb)}</div>`;
     h+=`<div class="files" style="margin-top:14px">`;
-    pil.projects.forEach((pr)=>{
+    pil.projects.forEach(pr=>{
       h+=`<div class="f"><i style="width:9px;height:9px;border-radius:50%;display:inline-block;background:${projColor(pr)}"></i>`+
-         `<b style="color:#dde2ea">${esc(pr.name)}</b> <span style="color:#5a606c">· ${esc(STATUS_LABEL[pr.status]||pr.status)}${pr.next?" · NEXT":""}</span></div>`;
+         `<b style="color:#3a3f48">${esc(pr.name)}</b> <span style="color:#aab">· ${esc(STATUS_LABEL[pr.status]||pr.status)}${pr.next?" · NEXT":""}</span></div>`;
     });
-    h+=`</div>`;
-    showPanel(h);
+    h+=`</div>`; showPanel(h);
   }
   function openProject(i,j){
     const pil=layout()[i].p, pr=pil.projects[j];
-    let h=`<div class="pp-pillar" style="color:${pil.color}">${esc(pil.name).toUpperCase()}</div>`;
+    let h=`<div class="pp-pillar" style="color:${pil.color}">${esc(pil.name.toUpperCase())}</div>`;
     h+=`<h2>${esc(pr.name)}</h2>`;
-    h+=`<div class="stat" style="border-color:${projColor(pr)}33;color:${projColor(pr)}">`+
+    h+=`<div class="stat" style="background:${projColor(pr)}1a;color:${projColor(pr)}">`+
        `<span style="width:8px;height:8px;border-radius:50%;background:${projColor(pr)};display:inline-block"></span>`+
        `${esc(STATUS_LABEL[pr.status]||pr.status)}${pr.next?" · next step":""}</div>`;
     h+=`<div class="row">Agent: <b>${esc(pr.agent||"—")}</b></div>`;
     h+=`<div class="row" style="display:block">Files:`;
-    if(pr.files.length){ h+=`<div class="files">`+pr.files.map(f=>`<div class="f">📄 ${esc(f)}</div>`).join("")+`</div>`; }
-    else { h+=`<div class="empty">No files yet — this branch hasn't sprouted.</div>`; }
+    if(pr.files.length) h+=`<div class="files">`+pr.files.map(f=>`<div class="f">📄 ${esc(f)}</div>`).join("")+`</div>`;
+    else h+=`<div class="empty">No files yet — this branch hasn't sprouted.</div>`;
     h+=`</div>`;
-    if(pr.note){ h+=`<div class="nextnote"><b>Next step:</b> ${esc(pr.note)}</div>`; }
+    if(pr.note) h+=`<div class="nextnote"><b>Next step:</b> ${esc(pr.note)}</div>`;
     showPanel(h);
   }
-  function showPanel(html){
-    document.getElementById("panelBody").innerHTML=html;
-    document.getElementById("panel").classList.add("open");
-  }
+  function showPanel(html){ document.getElementById("panelBody").innerHTML=html; document.getElementById("panel").classList.add("open"); }
   window.closePanel=()=>document.getElementById("panel").classList.remove("open");
-
-  document.querySelectorAll(".chip").forEach(c=>{
-    c.addEventListener("click",()=>{
-      document.querySelectorAll(".chip").forEach(x=>x.classList.remove("on"));
-      c.classList.add("on"); curFilter=c.dataset.f; render();
-    });
-  });
-
+  document.querySelectorAll(".chip").forEach(c=>c.addEventListener("click",()=>{
+    document.querySelectorAll(".chip").forEach(x=>x.classList.remove("on"));
+    c.classList.add("on"); curFilter=c.dataset.f; render();
+  }));
   render();
 }
 </script>
