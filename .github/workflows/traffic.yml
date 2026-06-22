@@ -1,0 +1,99 @@
+name: Update traffic data
+
+on:
+  schedule:
+    - cron: '0 3 * * *'  # daily at 03:00 UTC
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  update:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Fetch traffic API
+        env:
+          GH_TOKEN: ${{ secrets.TRAFFIC_TOKEN }}
+        run: |
+          gh api repos/jmac17ba/goldscalper-ea/traffic/clones --jq '.clones' > /tmp/clones.json
+          gh api repos/jmac17ba/goldscalper-ea/traffic/views  --jq '.views'  > /tmp/views.json
+
+      - name: Merge into history and recompute totals
+        run: |
+          node <<'EOF'
+          const fs = require('fs');
+          const path = 'data/traffic.json';
+
+          let history = { clones: [], views: [], totals: {}, lastUpdated: null };
+          if (fs.existsSync(path)) {
+            history = JSON.parse(fs.readFileSync(path, 'utf8'));
+            if (!history.totals) history.totals = {};
+          }
+          const newClones = JSON.parse(fs.readFileSync('/tmp/clones.json', 'utf8'));
+          const newViews  = JSON.parse(fs.readFileSync('/tmp/views.json',  'utf8'));
+
+          // Merge by timestamp; newer overwrites same-day. History entries that
+          // have aged out of the API's 14-day window stay because they're only
+          // in `existing`, never in `fresh`.
+          const merge = (existing, fresh) => {
+            const map = new Map(existing.map(e => [e.timestamp, e]));
+            for (const item of fresh) map.set(item.timestamp, item);
+            return [...map.values()].sort((a, b) => a.timestamp.localeCompare(b.timestamp));
+          };
+
+          // Snapshot pre-merge so we can short-circuit when GitHub's traffic
+          // API hasn't surfaced new data yet (it lags ~24-36h behind today,
+          // and successive cron runs often re-fetch the same 14-day window).
+          // Without this guard every run would still bump `lastUpdated` and
+          // produce a no-op commit.
+          const before = JSON.stringify({ clones: history.clones, views: history.views });
+
+          history.clones = merge(history.clones, newClones);
+          history.views  = merge(history.views,  newViews);
+
+          const after = JSON.stringify({ clones: history.clones, views: history.views });
+          if (before === after) {
+            console.log('No new data since last run; skipping write to avoid empty commit.');
+            process.exit(0);
+          }
+
+          // Recompute totals from the full history every run, so values can't
+          // drift even if the script changes.
+          const sumBy = (arr, key) => arr.reduce((a, e) => a + (e[key] || 0), 0);
+          const maxBy = (arr, key) => arr.reduce((a, e) => Math.max(a, e[key] || 0), 0);
+
+          history.totals = {
+            clones: sumBy(history.clones, 'count'),
+            // uniqueClonerDays = sum of daily-unique counts. Not the same as
+            // "total unique users since start" — GitHub doesn't expose cloner
+            // identity, so a user who clones on 5 days is counted 5 times here.
+            uniqueClonerDays: sumBy(history.clones, 'uniques'),
+            peakDailyClones: maxBy(history.clones, 'count'),
+            peakDailyUniqueCloners: maxBy(history.clones, 'uniques'),
+            views: sumBy(history.views, 'count'),
+            uniqueVisitorDays: sumBy(history.views, 'uniques'),
+            peakDailyViews: maxBy(history.views, 'count'),
+            peakDailyUniqueVisitors: maxBy(history.views, 'uniques'),
+            daysTracked: history.clones.length,
+            firstDay: history.clones[0]?.timestamp ?? null,
+            lastDay: history.clones[history.clones.length - 1]?.timestamp ?? null,
+          };
+
+          history.lastUpdated = new Date().toISOString();
+          fs.writeFileSync(path, JSON.stringify(history, null, 2) + '\n');
+          EOF
+
+      - name: Commit if changed
+        run: |
+          git config user.name  'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add data/traffic.json
+          if git diff --cached --quiet; then
+            echo "No changes to commit"
+            exit 0
+          fi
+          git commit -m "chore(data): update traffic snapshot"
+          git push
