@@ -173,6 +173,27 @@ function elbow(x0,y0,x1,y1){
   const xmid=x0+(x1-x0)*0.60;
   return `M ${x0} ${y0} C ${x0} ${ymid} ${xmid} ${y1} ${x1} ${y1}`;
 }
+/* wobbly centre stem — centred at the base, gently swaying as it climbs */
+function spineX(y){
+  const t=(baseY-y)/(baseY-trunkTop);          // 0 at base, 1 at top
+  return cx + 14*Math.sin(t*Math.PI*1.7);
+}
+function trunkShape(){
+  const N=26, P=[];
+  for(let i=0;i<=N;i++){
+    const t=i/N, y=baseY-(baseY-trunkTop)*t;
+    P.push({y, x:spineX(y), w:(17-(17-7)*t)/2});  // taper wide→narrow
+  }
+  let d="M "+(P[0].x-P[0].w).toFixed(1)+" "+P[0].y.toFixed(1);
+  for(let i=1;i<=N;i++) d+=" L "+(P[i].x-P[i].w).toFixed(1)+" "+P[i].y.toFixed(1);
+  for(let i=N;i>=0;i--) d+=" L "+(P[i].x+P[i].w).toFixed(1)+" "+P[i].y.toFixed(1);
+  return d+" Z";
+}
+function spinePath(){
+  let d="M "+spineX(baseY-18).toFixed(1)+" "+(baseY-18);
+  for(let y=baseY-18; y>=trunkTop+8; y-=14) d+=" L "+spineX(y).toFixed(1)+" "+y;
+  return d;
+}
 
 function matchFilter(pr,f){ if(f==="all")return true; if(f==="next")return !!pr.next; return pr.status===f; }
 
@@ -189,9 +210,9 @@ function buildSVG(filter){
   S.push(`<rect width="${W}" height="${H}" fill="#f6f7f3"/>`);
   S.push(`<rect width="${W}" height="${H}" fill="url(#hatch)"/>`);
 
-  // ── trunk: slim tapered line-art ──
-  S.push(`<path d="${vcurve(cx-7,baseY,cx-3,trunkTop)} L ${cx+3} ${trunkTop} ${vcurve(cx+3,trunkTop,cx+7,baseY).replace('M','L')} Z" fill="#eceee7" stroke="#cfd3c8" stroke-width="1.5"/>`);
-  S.push(`<line x1="${cx}" y1="${baseY-20}" x2="${cx}" y2="${trunkTop+10}" stroke="#dadcd3" stroke-width="1"/>`);
+  // ── trunk: slim tapered line-art with a gentle wobble ──
+  S.push(`<path d="${trunkShape()}" fill="#eceee7" stroke="#cfd3c8" stroke-width="1.5"/>`);
+  S.push(`<path d="${spinePath()}" fill="none" stroke="#dadcd3" stroke-width="1"/>`);
 
   // ── roots fanning out at the base ──
   const rn=DATA.roots.length;
@@ -206,8 +227,8 @@ function buildSVG(filter){
   // ── branches + pins (organic: rise off the trunk, then bend out) ──
   place.forEach((pl,idx)=>{
     const p=pl.p, col=p.color;
-    const ax=cx+(pl.side==="L"?-6:6);
     const attachY=Math.min(pl.y+150, baseY-26);     // limb starts well below its pin → visible rise
+    const ax=spineX(attachY)+(pl.side==="L"?-5:5);   // attach to the wobbly spine, not dead centre
     const visible=p.projects.some(pr=>matchFilter(pr,filter));
     const outer=pl.side==="L"?-1:1;
     const anchor=pl.side==="L"?"end":"start";
