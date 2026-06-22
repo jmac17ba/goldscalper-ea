@@ -2,7 +2,11 @@
 # The public repo stays bot + guide only.
 agent-office/
 agent-overwatch/
-dashboard/
+# dashboard/ is tracked (Claude maintains the project-brain tree across sessions);
+# any other local cruft under it stays ignored.
+dashboard/*
+!dashboard/index.html
+!dashboard/README.md
 bad-apple-enterprise/
 brand/
 
