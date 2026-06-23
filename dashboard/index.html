@@ -3,68 +3,67 @@
 <head>
 <meta charset="utf-8"/>
 <meta name="viewport" content="width=device-width, initial-scale=1"/>
-<title>17BA Progress Tree</title>
+<title>17BA Nerve Map</title>
 <style>
-  :root{
-    --bg:#f6f7f3; --ink:#3a3f48; --mut:#9aa0aa; --faint:#e7e9e2; --line:#c8ccc0;
-  }
+  :root{ --ink:#e8edf5; --mut:#8a93a3; --faint:#1a2230; --panel:#0d121b; }
   *{box-sizing:border-box}
   html,body{margin:0;height:100%}
   body{
-    background:var(--bg); color:var(--ink);
+    background:#070b11; color:var(--ink);
     font-family:"Segoe UI",Helvetica,Arial,sans-serif; overflow:hidden;
   }
   header{
-    position:fixed; top:0; left:0; right:0; height:58px; z-index:5;
+    position:fixed; top:0; left:0; right:0; height:60px; z-index:5;
     display:flex; align-items:center; gap:18px; padding:0 24px;
+    background:linear-gradient(180deg, rgba(7,11,17,.95), rgba(7,11,17,.4) 70%, transparent);
   }
-  header .title{font-size:18px; font-weight:800; letter-spacing:2px; color:#b8442f}
-  header .sub{font-size:11.5px; color:var(--mut); letter-spacing:1px; margin-top:1px}
+  header .title{font-size:18px; font-weight:800; letter-spacing:3px; color:#3fd6e6}
+  header .sub{font-size:11px; color:var(--mut); letter-spacing:2px; margin-top:2px}
   header .spacer{flex:1}
   .chips{display:flex; gap:8px}
   .chip{
-    font-size:12px; color:var(--mut); border:1px solid var(--line);
-    background:#fff; padding:6px 13px; border-radius:20px; cursor:pointer;
+    font-size:12px; color:var(--mut); border:1px solid #20303f;
+    background:#0c131c; padding:6px 13px; border-radius:20px; cursor:pointer;
     user-select:none; transition:.15s;
   }
   .chip:hover{color:var(--ink)}
-  .chip.on{color:#fff; border-color:#b8442f; background:#b8442f}
+  .chip.on{color:#06222a; border-color:#3fd6e6; background:#3fd6e6}
   #stage{position:absolute; inset:0}
   svg{width:100%; height:100%; display:block}
   .branch{transition:opacity .18s; cursor:pointer}
-  .pin,.opt{cursor:pointer}
-  .pin-num{font-weight:800; fill:#fff}
+  .opt{cursor:pointer}
+  .pin-num{font-weight:800; fill:#06121a}
   .ttl{font-weight:800; letter-spacing:.5px}
   .blurb{fill:var(--mut)}
-  .pname{fill:#4a4f58; font-weight:600}
-  .leaf{fill:#aeb4bc}
-  .dim{opacity:.16}
-  .pulse{transform-box:fill-box; transform-origin:center; animation:pp 1.6s ease-in-out infinite}
-  @keyframes pp{0%,100%{opacity:.25}50%{opacity:.9}}
+  .pname{fill:#cfd7e3; font-weight:600}
+  .leaf{fill:#5e6a7a}
+  .dim{opacity:.13}
+  .pulse{transform-box:fill-box; transform-origin:center; animation:pp 1.5s ease-in-out infinite}
+  @keyframes pp{0%,100%{opacity:.25; r:7}50%{opacity:1; r:11}}
   /* side panel */
   #panel{
     position:fixed; top:0; right:0; width:330px; bottom:0; z-index:8;
-    background:#fff; border-left:1px solid var(--faint); box-shadow:-12px 0 40px rgba(0,0,0,.06);
+    background:linear-gradient(180deg,#0e141d,#0a0e15); border-left:1px solid #182232;
     transform:translateX(100%); transition:.22s ease; padding:24px; overflow:auto;
   }
   #panel.open{transform:none}
   #panel .pclose{position:absolute; top:16px; right:18px; color:var(--mut); cursor:pointer; font-size:18px}
-  #panel h2{margin:6px 0 2px; font-size:21px; color:#2b2f37}
+  #panel h2{margin:6px 0 2px; font-size:21px; color:#f0f4fa}
   #panel .pp-pillar{font-size:11px; font-weight:800; letter-spacing:1.5px}
   #panel .row{display:flex; gap:8px; align-items:center; margin:14px 0 0; font-size:13px; color:var(--mut)}
   #panel .row b{color:var(--ink); font-weight:600}
   #panel .stat{display:inline-flex; align-items:center; gap:7px; font-size:12.5px; padding:5px 12px; border-radius:20px; margin-top:12px; font-weight:600}
   #panel .files{margin-top:8px}
-  #panel .files .f{display:flex; align-items:center; gap:8px; font-size:12.5px; color:#5a606c; padding:7px 0; border-bottom:1px solid #f0f1ec}
-  #panel .nextnote{margin-top:18px; padding:12px 14px; border-radius:10px; background:#f0faf2; border:1px solid #cfe9d6; color:#2f8a4e; font-size:12.5px}
-  #panel .empty{margin-top:8px; color:#bcc1c8; font-size:12.5px; font-style:italic}
+  #panel .files .f{display:flex; align-items:center; gap:8px; font-size:12.5px; color:#aeb6c4; padding:7px 0; border-bottom:1px solid #141b26}
+  #panel .nextnote{margin-top:18px; padding:12px 14px; border-radius:10px; background:#10241a; border:1px solid #1d4a30; color:#5fe39a; font-size:12.5px}
+  #panel .empty{margin-top:8px; color:#4a5566; font-size:12.5px; font-style:italic}
 </style>
 </head>
 <body>
 <header>
   <div>
-    <div class="title">17BA PROGRESS TREE</div>
-    <div class="sub" id="subline">BAD APPLE ENTERPRISE</div>
+    <div class="title">17BA NERVE MAP</div>
+    <div class="sub" id="subline">BAD APPLE ENTERPRISE · CENTRAL NERVOUS SYSTEM</div>
   </div>
   <div class="spacer"></div>
   <div class="chips">
@@ -85,53 +84,48 @@
 <script>
 /* ════════════════════════════════════════════════════════════════════
    DATA — single source of truth. Claude maintains it each session.
-   status: done | active | draft | idea     (next:true = grow this next)
+   status: done | active | draft | idea     (next:true = fire this next)
    ════════════════════════════════════════════════════════════════════ */
 const DATA = {
   core: { name:"17BA", sub:"BAD APPLE ENTERPRISE" },
   roots: ["17BA_Chakka.mq5","17BA_Kwasheba.mq5","agent-office/","README.md"],
   pillars: [
-    { n:1, name:"Trading Engine", color:"#2fa45a", side:"L", icon:"chart",
+    { n:1, name:"Trading Engine", color:"#36d17f", side:"L", icon:"chart",
       blurb:"MQL5 expert advisors — the engine room.",
       projects:[
         { name:"Chakka Bot",   agent:"Reality Checker", status:"done",   files:["17BA_Chakka.mq5"] },
         { name:"Kwasheba Bot", agent:"Code Reviewer",   status:"done",   files:["17BA_Kwasheba.mq5"] },
         { name:"Bot #3",       agent:"—",               status:"idea",   files:[] }
       ] },
-    { n:2, name:"Agent Infrastructure", color:"#1f9bb3", side:"R", icon:"bot",
+    { n:2, name:"Agent Infrastructure", color:"#28d3e8", side:"R", icon:"bot",
       blurb:"The agents and tools that run the shop.",
       projects:[
         { name:"Agent Office",    agent:"MCP Builder",        status:"done",   files:["server.py","index.html"] },
         { name:"This Dashboard",  agent:"Frontend Developer", status:"active", files:["dashboard/index.html"] },
         { name:"Agent Overwatch", agent:"SRE",                status:"draft",  files:["overwatch.py"] }
       ] },
-    { n:3, name:"Brand & Content", color:"#e08529", side:"L", icon:"brand",
+    { n:3, name:"Brand & Content", color:"#ff9a3c", side:"L", icon:"brand",
       blurb:"How 17BA looks, sounds, and sells.",
       projects:[
         { name:"Brand",          agent:"Brand Guardian", status:"draft", files:["brand/guide.md"] },
         { name:"Bot Sales Page", agent:"Growth Hacker",  status:"draft", files:["sales.html"], next:true,
           note:"Educational landing page presenting Chakka + Kwasheba — strictly no profit promises." }
       ] },
-    { n:4, name:"The Academy", color:"#8b46d4", side:"R", icon:"cap",
+    { n:4, name:"The Academy", color:"#b06bff", side:"R", icon:"cap",
       blurb:"Teaching what we build.",
-      projects:[
-        { name:"The Academy", agent:"Training Designer", status:"idea", files:[] }
-      ] },
-    { n:5, name:"The Collections", color:"#d6a312", side:"L", icon:"box",
+      projects:[ { name:"The Academy", agent:"Training Designer", status:"idea", files:[] } ] },
+    { n:5, name:"The Collections", color:"#ffc83a", side:"L", icon:"box",
       blurb:"Products and drops.",
-      projects:[
-        { name:"Collection #1", agent:"—", status:"idea", files:[] }
-      ] },
-    { n:6, name:"Corefuel", color:"#d83a3a", side:"R", icon:"fuel",
+      projects:[ { name:"Collection #1", agent:"—", status:"idea", files:[] } ] },
+    { n:6, name:"Corefuel", color:"#ff5a5a", side:"R", icon:"fuel",
       blurb:"The financial backbone.",
-      projects:[
-        { name:"Fuel Source", agent:"—", status:"idea", files:[] }
-      ] }
+      projects:[ { name:"Fuel Source", agent:"—", status:"idea", files:[] } ] }
   ]
 };
 
-const STATUS = { done:"#2fa45a", active:"#e0a01f", draft:"#aeb4bc", idea:"#5b8def", next:"#e0a01f" };
+const STATUS = { done:"#3ad17f", active:"#ffc24a", draft:"#7c8696", idea:"#5b9bff", next:"#ffc24a" };
 const STATUS_LABEL = { done:"Done / Live", active:"Active", draft:"Draft", idea:"Idea" };
+const CORD = "#36c5d6";
 
 const ICONS = {
   chart:"M4 19h16M6 16l3-4 3 2 4-7",
@@ -144,7 +138,7 @@ const ICONS = {
 
 const W=1440, H=940, cx=720, baseY=842, trunkTop=120;
 const PINX = { L:600, R:840 };
-const SLOTS = [648, 432, 208];   // index 0 = lowest (n smallest); grows upward
+const SLOTS = [648, 432, 208];
 
 function esc(s){return String(s).replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;");}
 function projColor(p){ return p.next ? STATUS.active : (STATUS[p.status]||STATUS.draft); }
@@ -153,48 +147,28 @@ function layout(){
   const byside={L:[],R:[]};
   DATA.pillars.slice().sort((a,b)=>a.n-b.n).forEach(p=>byside[p.side].push(p));
   const place=[];
-  for(const side of ["L","R"]){
+  for(const side of ["L","R"])
     byside[side].forEach((p,i)=>place.push({p, x:PINX[side], y:SLOTS[Math.min(i,SLOTS.length-1)], side}));
-  }
   return place;
 }
-function curve(x1,y1,x2,y2){
-  const mx=(x1+x2)/2;
-  return `M ${x1} ${y1} C ${mx} ${y1} ${mx} ${y2} ${x2} ${y2}`;
-}
-function vcurve(x1,y1,x2,y2){
-  const my=(y1+y2)/2;
-  return `M ${x1} ${y1} C ${x1} ${my} ${x2} ${my} ${x2} ${y2}`;
-}
-/* organic limb: leaves the trunk going straight UP, then bends OUT to the pin
-   (vertical tangent at the trunk, horizontal tangent at the pin) */
-function elbow(x0,y0,x1,y1){
-  const ymid=y0+(y1-y0)*0.52;
-  const xmid=x0+(x1-x0)*0.60;
-  return `M ${x0} ${y0} C ${x0} ${ymid} ${xmid} ${y1} ${x1} ${y1}`;
-}
-/* wobbly centre stem — centred at the base, gently swaying as it climbs */
-function spineX(y){
-  const t=(baseY-y)/(baseY-trunkTop);          // 0 at base, 1 at top
-  return cx + 14*Math.sin(t*Math.PI*1.7);
-}
-function trunkShape(){
-  const N=26, P=[];
-  for(let i=0;i<=N;i++){
-    const t=i/N, y=baseY-(baseY-trunkTop)*t;
-    P.push({y, x:spineX(y), w:(17-(17-7)*t)/2});  // taper wide→narrow
-  }
-  let d="M "+(P[0].x-P[0].w).toFixed(1)+" "+P[0].y.toFixed(1);
-  for(let i=1;i<=N;i++) d+=" L "+(P[i].x-P[i].w).toFixed(1)+" "+P[i].y.toFixed(1);
-  for(let i=N;i>=0;i--) d+=" L "+(P[i].x+P[i].w).toFixed(1)+" "+P[i].y.toFixed(1);
-  return d+" Z";
-}
+/* wavy central nerve cord */
+function spineX(y){ const t=(baseY-y)/(baseY-trunkTop); return cx + 16*Math.sin(t*Math.PI*1.7); }
 function spinePath(){
-  let d="M "+spineX(baseY-18).toFixed(1)+" "+(baseY-18);
-  for(let y=baseY-18; y>=trunkTop+8; y-=14) d+=" L "+spineX(y).toFixed(1)+" "+y;
+  let d="M "+spineX(baseY).toFixed(1)+" "+baseY;
+  for(let y=baseY; y>=trunkTop; y-=12) d+=" L "+spineX(y).toFixed(1)+" "+y;
   return d;
 }
+/* axon: rise off the cord, then bend out to the node */
+function elbow(x0,y0,x1,y1){ const ym=y0+(y1-y0)*0.52, xm=x0+(x1-x0)*0.6; return `M ${x0} ${y0} C ${x0} ${ym} ${xm} ${y1} ${x1} ${y1}`; }
+function vcurve(x1,y1,x2,y2){ const my=(y1+y2)/2; return `M ${x1} ${y1} C ${x1} ${my} ${x2} ${my} ${x2} ${y2}`; }
 
+/* a nerve = soft glow halo + bright core, optionally with a travelling signal */
+function nerve(d,col,coreW,glowW,signal,dur){
+  let s=`<path d="${d}" stroke="${col}" stroke-width="${glowW}" stroke-opacity=".16" fill="none" filter="url(#glow)" stroke-linecap="round"/>`+
+        `<path d="${d}" stroke="${col}" stroke-width="${coreW}" stroke-opacity=".9" fill="none" stroke-linecap="round"/>`;
+  if(signal) s+=`<circle r="2.6" fill="#fff" filter="url(#soft)"><animateMotion dur="${dur}s" repeatCount="indefinite" path="${d}"/></circle>`;
+  return s;
+}
 function matchFilter(pr,f){ if(f==="all")return true; if(f==="next")return !!pr.next; return pr.status===f; }
 
 function buildSVG(filter){
@@ -203,53 +177,64 @@ function buildSVG(filter){
   const S=[];
   S.push(`<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${W} ${H}" preserveAspectRatio="xMidYMid meet">`);
   S.push(`<defs>
-    <pattern id="hatch" width="22" height="22" patternUnits="userSpaceOnUse" patternTransform="rotate(45)">
-      <line x1="0" y1="0" x2="0" y2="22" stroke="#ecede8" stroke-width="1"/>
-    </pattern>
+    <radialGradient id="bg" cx="50%" cy="42%" r="75%">
+      <stop offset="0%" stop-color="#0c1420"/><stop offset="100%" stop-color="#06090e"/></radialGradient>
+    <filter id="glow" x="-120%" y="-120%" width="340%" height="340%">
+      <feGaussianBlur stdDeviation="5" result="b"/><feMerge><feMergeNode in="b"/><feMergeNode in="SourceGraphic"/></feMerge></filter>
+    <filter id="soft" x="-80%" y="-80%" width="260%" height="260%">
+      <feGaussianBlur stdDeviation="2" result="b"/><feMerge><feMergeNode in="b"/><feMergeNode in="SourceGraphic"/></feMerge></filter>
   </defs>`);
-  S.push(`<rect width="${W}" height="${H}" fill="#f6f7f3"/>`);
-  S.push(`<rect width="${W}" height="${H}" fill="url(#hatch)"/>`);
+  S.push(`<rect width="${W}" height="${H}" fill="url(#bg)"/>`);
 
-  // ── trunk: slim tapered line-art with a gentle wobble ──
-  S.push(`<path d="${trunkShape()}" fill="#eceee7" stroke="#cfd3c8" stroke-width="1.5"/>`);
-  S.push(`<path d="${spinePath()}" fill="none" stroke="#dadcd3" stroke-width="1"/>`);
+  // faint background neural filaments
+  for(let i=0;i<22;i++){
+    const fx=((i*137)%W), fy=((i*89)%H), a=Math.sin(i)*60;
+    S.push(`<path d="M ${fx} ${fy} q ${a} ${40} ${a*1.4} ${90}" stroke="#13202e" stroke-width="1" fill="none" opacity=".5"/>`);
+    S.push(`<circle cx="${fx}" cy="${fy}" r="1.3" fill="#1b2a3a"/>`);
+  }
 
-  // ── roots fanning out at the base ──
+  // ── central nerve cord (spinal) ──
+  const sp=spinePath();
+  S.push(nerve(sp, CORD, 3, 13, true, 5));
+  S.push(nerve(sp, CORD, 1.2, 0, false));
+
+  // ── root nerves fanning out at the base ──
   const rn=DATA.roots.length;
   DATA.roots.forEach((r,i)=>{
-    const dir=(i-(rn-1)/2);
-    const rx=cx+dir*165, ry=baseY+60;
-    S.push(`<path d="${vcurve(cx, baseY+4, rx, ry)}" stroke="#cdd1c6" stroke-width="1.6" fill="none"/>`);
-    S.push(`<circle cx="${rx}" cy="${ry}" r="4" fill="#fff" stroke="#c4c9bd" stroke-width="1.5"/>`);
+    const dir=(i-(rn-1)/2), rx=cx+dir*170, ry=baseY+62;
+    const d=vcurve(cx, baseY+4, rx, ry);
+    S.push(nerve(d, CORD, 1.6, 6, false));
+    S.push(`<circle cx="${rx}" cy="${ry}" r="4" fill="#0a121b" stroke="${CORD}" stroke-width="1.6"/>`);
     S.push(`<text x="${rx}" y="${ry+17}" text-anchor="middle" class="leaf" font-size="10">${esc(r)}</text>`);
   });
 
-  // ── branches + pins (organic: rise off the trunk, then bend out) ──
+  // ── pillar nerves + ganglia + synapses ──
   place.forEach((pl,idx)=>{
     const p=pl.p, col=p.color;
-    const attachY=Math.min(pl.y+150, baseY-26);     // limb starts well below its pin → visible rise
-    const ax=spineX(attachY)+(pl.side==="L"?-5:5);   // attach to the wobbly spine, not dead centre
+    const attachY=Math.min(pl.y+150, baseY-26);
+    const ax=spineX(attachY)+(pl.side==="L"?-5:5);
     const visible=p.projects.some(pr=>matchFilter(pr,filter));
     const outer=pl.side==="L"?-1:1;
     const anchor=pl.side==="L"?"end":"start";
-    const leadEnd=pl.x+outer*170;                    // horizontal lead line runs out to the title
+    const leadEnd=pl.x+outer*170;
+    const dur=(3.5+idx*0.6).toFixed(1);
 
-    // limb: straight up off the trunk, then a rounded bend out to the pin
-    S.push(`<path class="branch${visible?"":" dim"}" data-i="${idx}" d="${elbow(ax,attachY,pl.x,pl.y)}" stroke="${col}" stroke-width="2.4" fill="none" stroke-linecap="round"/>`);
-    // lead line out to the title
-    S.push(`<path class="branch${visible?"":" dim"}" data-i="${idx}" d="M ${pl.x} ${pl.y} L ${leadEnd} ${pl.y}" stroke="${col}" stroke-width="2.4" fill="none" stroke-linecap="round"/>`);
+    // main axon (cord → ganglion) with travelling signal, + lead to the title
+    S.push(`<g class="branch${visible?"":" dim"}" data-i="${idx}">`);
+    S.push(nerve(elbow(ax,attachY,pl.x,pl.y), col, 2.2, 9, visible, dur));
+    S.push(nerve(`M ${pl.x} ${pl.y} L ${leadEnd} ${pl.y}`, col, 2, 7, false));
+    S.push(`</g>`);
 
-    // option sub-nodes (projects) — small curved stubs hanging off the limb/lead, fanning out & down
+    // synapses (projects) — finer nerves hanging off the axon
     p.projects.forEach((pr,j)=>{
-      const sx=pl.x+outer*(34+j*52);                 // where the stub leaves the lead line
-      const oy=pl.y+38+j*30;                          // each option a little lower
+      const sx=pl.x+outer*(34+j*52), oy=pl.y+38+j*30;
       const pcol=projColor(pr);
       const vis=matchFilter(pr,filter);
-      const g=vis?"":' class="dim"';
-      S.push(`<path${g} d="${vcurve(sx, pl.y+3, sx, oy)}" stroke="${col}" stroke-width="1.3" stroke-opacity=".5" fill="none"/>`);
-      S.push(`<g class="opt"${vis?"":' opacity=".16"'} data-i="${idx}" data-j="${j}">`);
-      if(pr.next) S.push(`<circle class="pulse" cx="${sx}" cy="${oy}" r="9" fill="none" stroke="${STATUS.active}" stroke-width="2"/>`);
-      S.push(`<circle cx="${sx}" cy="${oy}" r="5" fill="#fff" stroke="${pcol}" stroke-width="2.4"/>`);
+      S.push(`<g${vis?"":' class="dim"'}>`+nerve(vcurve(sx, pl.y+3, sx, oy), col, 1.3, 4, false)+`</g>`);
+      S.push(`<g class="opt"${vis?"":' opacity=".13"'} data-i="${idx}" data-j="${j}">`);
+      if(pr.next) S.push(`<circle class="pulse" cx="${sx}" cy="${oy}" r="8" fill="none" stroke="${STATUS.active}" stroke-width="2"/>`);
+      S.push(`<circle cx="${sx}" cy="${oy}" r="9" fill="${pcol}" opacity=".22" filter="url(#glow)"/>`);
+      S.push(`<circle cx="${sx}" cy="${oy}" r="4.5" fill="${pcol}"/>`);
       const lx=sx+outer*12;
       S.push(`<text x="${lx}" y="${oy-2}" text-anchor="${anchor}" class="pname" font-size="11.5">${esc(pr.name)}</text>`);
       const sub=pr.files.length?pr.files.join(", "):(pr.status==="idea"?"→ next step":"no files yet");
@@ -257,45 +242,39 @@ function buildSVG(filter){
       S.push(`</g>`);
     });
 
-    // title block at the end of the lead line (icon + colored caps + grey blurb)
+    // ganglion (pillar neuron) + title
     const tx=leadEnd+outer*14;
-    S.push(`<g class="pin" data-i="${idx}"${visible?"":' opacity=".22"'}>`);
+    S.push(`<g class="branch" data-i="${idx}"${visible?"":' opacity=".22"'}>`);
     const icoX=pl.side==="L"? tx-22 : tx;
     S.push(`<g transform="translate(${icoX},${pl.y-56}) scale(.9)" fill="none" stroke="${col}" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="${ICONS[p.icon]||ICONS.box}"/></g>`);
     S.push(`<text x="${tx}" y="${pl.y-24}" text-anchor="${anchor}" class="ttl" fill="${col}" font-size="15">${esc(p.name.toUpperCase())}</text>`);
-    wrap(p.blurb, 30).forEach((ln,k)=>{
-      S.push(`<text x="${tx}" y="${pl.y-7+k*13}" text-anchor="${anchor}" class="blurb" font-size="10.5">${esc(ln)}</text>`);
-    });
-    // map-pin marker at the bend
-    S.push(pinMarker(pl.x, pl.y, col, p.n));
+    wrap(p.blurb,30).forEach((ln,k)=>S.push(`<text x="${tx}" y="${pl.y-7+k*13}" text-anchor="${anchor}" class="blurb" font-size="10.5">${esc(ln)}</text>`));
+    // soma
+    S.push(`<circle cx="${pl.x}" cy="${pl.y}" r="20" fill="${col}" opacity=".25" filter="url(#glow)"/>`);
+    // tiny dendrite filaments
+    for(let a=0;a<5;a++){ const ang=a/5*6.283+idx; const ex=pl.x+Math.cos(ang)*26, ey=pl.y+Math.sin(ang)*26;
+      S.push(`<line x1="${pl.x}" y1="${pl.y}" x2="${ex.toFixed(0)}" y2="${ey.toFixed(0)}" stroke="${col}" stroke-width="1.2" stroke-opacity=".5"/>`);
+      S.push(`<circle cx="${ex.toFixed(0)}" cy="${ey.toFixed(0)}" r="1.6" fill="${col}" opacity=".7"/>`); }
+    S.push(`<circle cx="${pl.x}" cy="${pl.y}" r="14" fill="${col}"/>`);
+    S.push(`<circle cx="${pl.x}" cy="${pl.y}" r="14" fill="none" stroke="#06121a" stroke-width="2"/>`);
+    S.push(`<text x="${pl.x}" y="${pl.y+5}" text-anchor="middle" class="pin-num" font-size="14">${p.n}</text>`);
     S.push(`</g>`);
   });
 
-  // ── base node (subtle target) + label ──
-  S.push(`<circle cx="${cx}" cy="${baseY}" r="13" fill="#fff" stroke="#b8442f" stroke-width="2.5"/>`);
-  S.push(`<circle cx="${cx}" cy="${baseY}" r="5" fill="#b8442f"/>`);
-  S.push(`<text x="${cx}" y="${baseY+44}" text-anchor="middle" fill="#b8442f" font-size="15" font-weight="800" letter-spacing="1.5">${esc(DATA.core.name)}</text>`);
+  // ── 17BA brain (root ganglion) ──
+  S.push(`<circle cx="${cx}" cy="${baseY}" r="34" fill="#ff5a5a" opacity=".22" filter="url(#glow)"/>`);
+  S.push(`<circle cx="${cx}" cy="${baseY}" r="16" fill="#0a0e15" stroke="#ff5a5a" stroke-width="2.5"/>`);
+  S.push(`<circle cx="${cx}" cy="${baseY}" r="6" fill="#ff5a5a"/>`);
+  S.push(`<text x="${cx}" y="${baseY+46}" text-anchor="middle" fill="#ff7a7a" font-size="15" font-weight="800" letter-spacing="1.5">${esc(DATA.core.name)}</text>`);
 
   S.push(`</svg>`);
   return S.join("");
 }
 
-/* a flat circular map-pin with a small downward point and centered number */
-function pinMarker(x,y,col,num){
-  const p=6;
-  return `<g>`+
-    `<path d="M ${x-13} ${y} A 13 13 0 1 1 ${x+13} ${y} L ${x+p} ${y} L ${x} ${y+13} L ${x-p} ${y} Z" fill="${col}"/>`+
-    `<circle cx="${x}" cy="${y}" r="13" fill="${col}"/>`+
-    `<circle cx="${x}" cy="${y}" r="13" fill="none" stroke="#fff" stroke-width="1.5"/>`+
-    `<text x="${x}" y="${y+5}" text-anchor="middle" class="pin-num" font-size="14">${num}</text>`+
-  `</g>`;
-}
-
 function wrap(s,max){
   const words=String(s).split(" "); const lines=[]; let cur="";
   for(const w of words){ if((cur+" "+w).trim().length>max){ lines.push(cur.trim()); cur=w; } else cur+=" "+w; }
-  if(cur.trim()) lines.push(cur.trim());
-  return lines.slice(0,2);
+  if(cur.trim()) lines.push(cur.trim()); return lines.slice(0,2);
 }
 
 /* ── Node export for verification / browser init ── */
@@ -307,51 +286,39 @@ if (typeof document!=="undefined"){
     document.getElementById("stage").innerHTML=buildSVG(curFilter);
     wire();
     const nx=DATA.pillars.flatMap(p=>p.projects).find(x=>x.next);
-    document.getElementById("subline").textContent = nx?("NEXT STEP → "+nx.name.toUpperCase()):"BAD APPLE ENTERPRISE";
+    document.getElementById("subline").textContent = nx?("FIRING NEXT → "+nx.name.toUpperCase()):"BAD APPLE ENTERPRISE · CENTRAL NERVOUS SYSTEM";
   }
   function wire(){
-    document.querySelectorAll(".pin,.branch").forEach(el=>{
+    document.querySelectorAll(".branch").forEach(el=>{
       el.addEventListener("click",()=>openPillar(+el.dataset.i));
       el.addEventListener("mouseenter",()=>highlight(+el.dataset.i));
       el.addEventListener("mouseleave",()=>render());
     });
-    document.querySelectorAll(".opt").forEach(el=>{
-      el.addEventListener("click",e=>{e.stopPropagation();openProject(+el.dataset.i,+el.dataset.j);});
-    });
+    document.querySelectorAll(".opt").forEach(el=>el.addEventListener("click",e=>{e.stopPropagation();openProject(+el.dataset.i,+el.dataset.j);}));
   }
   function highlight(i){ document.querySelectorAll(".branch").forEach(b=>{ if(+b.dataset.i!==i) b.classList.add("dim"); }); }
   function openPillar(i){
     const pil=layout()[i].p;
-    let h=`<div class="pp-pillar" style="color:${pil.color}">PILLAR ${pil.n} · ${esc(pil.name.toUpperCase())}</div>`;
-    h+=`<h2>${esc(pil.name)}</h2>`;
-    h+=`<div class="row" style="margin-top:4px">${esc(pil.blurb)}</div>`;
-    h+=`<div class="files" style="margin-top:14px">`;
-    pil.projects.forEach(pr=>{
-      h+=`<div class="f"><i style="width:9px;height:9px;border-radius:50%;display:inline-block;background:${projColor(pr)}"></i>`+
-         `<b style="color:#3a3f48">${esc(pr.name)}</b> <span style="color:#aab">· ${esc(STATUS_LABEL[pr.status]||pr.status)}${pr.next?" · NEXT":""}</span></div>`;
-    });
+    let h=`<div class="pp-pillar" style="color:${pil.color}">NERVE ${pil.n} · ${esc(pil.name.toUpperCase())}</div>`;
+    h+=`<h2>${esc(pil.name)}</h2><div class="row" style="margin-top:4px">${esc(pil.blurb)}</div><div class="files" style="margin-top:14px">`;
+    pil.projects.forEach(pr=>{ h+=`<div class="f"><i style="width:9px;height:9px;border-radius:50%;display:inline-block;background:${projColor(pr)}"></i>`+
+      `<b style="color:#dfe5ee">${esc(pr.name)}</b> <span style="color:#69748a">· ${esc(STATUS_LABEL[pr.status]||pr.status)}${pr.next?" · NEXT":""}</span></div>`; });
     h+=`</div>`; showPanel(h);
   }
   function openProject(i,j){
     const pil=layout()[i].p, pr=pil.projects[j];
-    let h=`<div class="pp-pillar" style="color:${pil.color}">${esc(pil.name.toUpperCase())}</div>`;
-    h+=`<h2>${esc(pr.name)}</h2>`;
-    h+=`<div class="stat" style="background:${projColor(pr)}1a;color:${projColor(pr)}">`+
-       `<span style="width:8px;height:8px;border-radius:50%;background:${projColor(pr)};display:inline-block"></span>`+
-       `${esc(STATUS_LABEL[pr.status]||pr.status)}${pr.next?" · next step":""}</div>`;
-    h+=`<div class="row">Agent: <b>${esc(pr.agent||"—")}</b></div>`;
-    h+=`<div class="row" style="display:block">Files:`;
+    let h=`<div class="pp-pillar" style="color:${pil.color}">${esc(pil.name.toUpperCase())}</div><h2>${esc(pr.name)}</h2>`;
+    h+=`<div class="stat" style="background:${projColor(pr)}1f;color:${projColor(pr)}"><span style="width:8px;height:8px;border-radius:50%;background:${projColor(pr)};display:inline-block"></span>${esc(STATUS_LABEL[pr.status]||pr.status)}${pr.next?" · firing next":""}</div>`;
+    h+=`<div class="row">Agent: <b>${esc(pr.agent||"—")}</b></div><div class="row" style="display:block">Files:`;
     if(pr.files.length) h+=`<div class="files">`+pr.files.map(f=>`<div class="f">📄 ${esc(f)}</div>`).join("")+`</div>`;
-    else h+=`<div class="empty">No files yet — this branch hasn't sprouted.</div>`;
-    h+=`</div>`;
-    if(pr.note) h+=`<div class="nextnote"><b>Next step:</b> ${esc(pr.note)}</div>`;
+    else h+=`<div class="empty">No synapse yet — this nerve hasn't fired.</div>`;
+    h+=`</div>`; if(pr.note) h+=`<div class="nextnote"><b>Next step:</b> ${esc(pr.note)}</div>`;
     showPanel(h);
   }
   function showPanel(html){ document.getElementById("panelBody").innerHTML=html; document.getElementById("panel").classList.add("open"); }
   window.closePanel=()=>document.getElementById("panel").classList.remove("open");
   document.querySelectorAll(".chip").forEach(c=>c.addEventListener("click",()=>{
-    document.querySelectorAll(".chip").forEach(x=>x.classList.remove("on"));
-    c.classList.add("on"); curFilter=c.dataset.f; render();
+    document.querySelectorAll(".chip").forEach(x=>x.classList.remove("on")); c.classList.add("on"); curFilter=c.dataset.f; render();
   }));
   render();
 }
