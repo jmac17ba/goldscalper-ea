@@ -8,10 +8,10 @@
   :root{ --ink:#e9eef6; --mut:#8893a4; }
   *{box-sizing:border-box}
   html,body{margin:0;height:100%}
-  body{ background:#04060a; color:var(--ink); font-family:"Segoe UI",Helvetica,Arial,sans-serif; overflow:hidden; }
-  header{ position:fixed; top:0; left:0; right:0; height:60px; z-index:5;
+  body{ background:#03040705; background-color:#040609; color:var(--ink); font-family:"Segoe UI",Helvetica,Arial,sans-serif; overflow:hidden; }
+  header{ position:fixed; top:0; left:0; right:0; height:58px; z-index:5;
     display:flex; align-items:center; gap:18px; padding:0 24px;
-    background:linear-gradient(180deg, rgba(4,6,10,.96), rgba(4,6,10,.3) 70%, transparent); }
+    background:linear-gradient(180deg, rgba(4,6,9,.96), rgba(4,6,9,.25) 70%, transparent); }
   header .title{font-size:18px; font-weight:800; letter-spacing:3px;
     background:linear-gradient(90deg,#f3b83c,#3ad2e8); -webkit-background-clip:text; background-clip:text; color:transparent}
   header .sub{font-size:11px; color:var(--mut); letter-spacing:2px; margin-top:2px}
@@ -25,10 +25,10 @@
   svg{width:100%; height:100%; display:block}
   .gang,.opt{cursor:pointer}
   .pin-num{font-weight:800; fill:#05202a}
-  .ttl{font-weight:800; letter-spacing:.5px; fill:#eaf3fb}
+  .ttl{font-weight:800; letter-spacing:.5px; fill:#dbe7f2}
   .pname{fill:#d4dde9; font-weight:600}
   .leaf{fill:#5d6a7b}
-  .dim{opacity:.12; transition:opacity .18s}
+  .dim{opacity:.1; transition:opacity .18s}
   .pulse{transform-box:fill-box; transform-origin:center; animation:pp 1.5s ease-in-out infinite}
   @keyframes pp{0%,100%{opacity:.25}50%{opacity:1}}
   #panel{ position:fixed; top:0; right:0; width:330px; bottom:0; z-index:8;
@@ -73,142 +73,161 @@ const DATA = {
   core:{ name:"17BA", sub:"BAD APPLE ENTERPRISE" },
   roots:["17BA_Chakka.mq5","17BA_Kwasheba.mq5","agent-office/","README.md"],
   pillars:[
-    { n:1, name:"Trading Engine", side:"L", icon:"chart", blurb:"MQL5 expert advisors — the engine room.",
+    { n:1, name:"Trading Engine", side:"L", blurb:"MQL5 expert advisors — the engine room.",
       projects:[
         { name:"Chakka Bot",   agent:"Reality Checker", status:"done",   files:["17BA_Chakka.mq5"] },
         { name:"Kwasheba Bot", agent:"Code Reviewer",   status:"done",   files:["17BA_Kwasheba.mq5"] },
         { name:"Bot #3",       agent:"—",               status:"idea",   files:[] } ] },
-    { n:2, name:"Agent Infrastructure", side:"R", icon:"bot", blurb:"The agents and tools that run the shop.",
+    { n:2, name:"Agent Infrastructure", side:"R", blurb:"The agents and tools that run the shop.",
       projects:[
         { name:"Agent Office",    agent:"MCP Builder",        status:"done",   files:["server.py","index.html"] },
         { name:"This Dashboard",  agent:"Frontend Developer", status:"active", files:["dashboard/index.html"] },
         { name:"Agent Overwatch", agent:"SRE",                status:"draft",  files:["overwatch.py"] } ] },
-    { n:3, name:"Brand & Content", side:"L", icon:"brand", blurb:"How 17BA looks, sounds, and sells.",
+    { n:3, name:"Brand & Content", side:"L", blurb:"How 17BA looks, sounds, and sells.",
       projects:[
         { name:"Brand",          agent:"Brand Guardian", status:"draft", files:["brand/guide.md"] },
         { name:"Bot Sales Page", agent:"Growth Hacker",  status:"draft", files:["sales.html"], next:true,
           note:"Educational landing page presenting Chakka + Kwasheba — strictly no profit promises." } ] },
-    { n:4, name:"The Academy", side:"R", icon:"cap", blurb:"Teaching what we build.",
+    { n:4, name:"The Academy", side:"R", blurb:"Teaching what we build.",
       projects:[ { name:"The Academy", agent:"Training Designer", status:"idea", files:[] } ] },
-    { n:5, name:"The Collections", side:"L", icon:"box", blurb:"Products and drops.",
+    { n:5, name:"The Collections", side:"L", blurb:"Products and drops.",
       projects:[ { name:"Collection #1", agent:"—", status:"idea", files:[] } ] },
-    { n:6, name:"Corefuel", side:"R", icon:"fuel", blurb:"The financial backbone.",
+    { n:6, name:"Corefuel", side:"R", blurb:"The financial backbone.",
       projects:[ { name:"Fuel Source", agent:"—", status:"idea", files:[] } ] }
   ]
 };
 const STATUS={ done:"#3ad17f", active:"#ffc24a", draft:"#7c8696", idea:"#5b9bff", next:"#ffc24a" };
 const STATUS_LABEL={ done:"Done / Live", active:"Active", draft:"Draft", idea:"Idea" };
 
-const W=1440, H=920, cx=720, baseY=672, forkY=560;
+const W=1440, H=940, cx=720, baseY=702, forkY=470;
 function esc(s){return String(s).replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;");}
 function projColor(p){ return p.next?STATUS.active:(STATUS[p.status]||STATUS.draft); }
 
-/* deterministic RNG so the tree is identical every load */
-let SEED=7;
+/* deterministic RNG — identical tree every load */
+let SEED=11;
 function srand(s){SEED=s>>>0;}
 function rnd(){ SEED=SEED+0x6D2B79F5|0; let t=Math.imul(SEED^SEED>>>15,1|SEED); t=t+Math.imul(t^t>>>7,61|t)^t; return ((t^t>>>14)>>>0)/4294967296; }
 function rr(a,b){return a+(b-a)*rnd();}
 
-const GOLD=[243,184,60], TEAL=[58,210,232];
+const GOLD=[244,186,62], TEAL=[60,212,234];
 function mix(t){ t=Math.max(0,Math.min(1,t));
   const r=Math.round(GOLD[0]+(TEAL[0]-GOLD[0])*t), g=Math.round(GOLD[1]+(TEAL[1]-GOLD[1])*t), b=Math.round(GOLD[2]+(TEAL[2]-GOLD[2])*t);
   return "#"+((1<<24)+(r<<16)+(g<<8)+b).toString(16).slice(1); }
 
-/* grow a fractal limb; pushes line segments + sparse glow points */
+/* wispy fractal limb — long graceful filaments, sparse tips */
 function grow(x,y,ang,len,w,depth,hue,down,segs,nodes){
-  if(depth<=0||len<6){ if(rnd()<0.5) nodes.push([x,y,rr(1.2,3),Math.min(1,hue+0.2)]); return; }
-  const steps=Math.max(3,(len/13)|0); let a=ang, X=x, Y=y;
+  if(!down && y < 62) return; // clamp crown above header
+  if(down && y > H-28) return; // clamp roots below canvas
+  if(depth<=0||len<22){ if(rnd()<0.42) nodes.push([x,y,rr(1,2.6),Math.min(1,hue+0.15)]); return; }
+  const steps=Math.max(3,(len/18)|0); let a=ang, X=x, Y=y;
   for(let s=0;s<steps;s++){
-    a+=rr(-0.07,0.07); const sl=len/steps;
+    a+=rr(-0.05,0.05); const sl=len/steps;
     const nx=X+Math.sin(a)*sl, ny=Y+(down?Math.cos(a)*sl:-Math.cos(a)*sl);
+    if(!down && ny < 62) break; // stop this strand at ceiling
+    if(down && ny > H-28) break; // stop roots at floor
     segs.push([X,Y,nx,ny,w,hue]); X=nx; Y=ny;
-    if(rnd()<0.04) nodes.push([X,Y,rr(1,2.3),hue]);
+    if(rnd()<0.025) nodes.push([X,Y,rr(.9,2),hue]);
   }
-  const nc = rnd()<0.25?3:2;
+  const nc = rnd()<0.22?3:2;
   for(let k=0;k<nc;k++){
-    const spread=rr(0.28,0.62), na=ang+(k-(nc-1)/2)*spread+rr(-0.12,0.12);
-    grow(X,Y,na,len*rr(0.6,0.78),Math.max(0.4,w*rr(0.6,0.74)),depth-1,Math.min(1,hue+rr(-0.04,0.16)),down,segs,nodes);
+    const spread=rr(0.26,0.58), na=ang+(k-(nc-1)/2)*spread+rr(-0.1,0.1);
+    grow(X,Y,na,len*rr(0.68,0.82),Math.max(0.35,w*rr(0.62,0.72)),depth-1,Math.min(1,hue+rr(-0.03,0.14)),down,segs,nodes);
   }
 }
 
-/* six pillar limb directions (radians from vertical); L negative, R positive */
-const LIMB={ 1:-0.34, 3:-0.72, 5:-1.12, 2:0.34, 4:0.72, 6:1.12 };
-const REACH={ 1:300, 3:360, 5:330, 2:300, 4:360, 6:330 };
+/* intertwined two-tone trunk fibers, base → fork */
+function trunkStrands(segs){
+  const n=9;
+  for(let i=0;i<n;i++){
+    const hue=(i%2===0)?0.10:0.86, baseOff=(i-(n-1)/2)*7, amp=7+(i%3)*5, ph=i*0.8;
+    let px=cx+baseOff, py=baseY; const STEPS=30;
+    for(let s=1;s<=STEPS;s++){
+      const t=s/STEPS, y=baseY+(forkY-baseY)*t, conv=1-t;
+      const x=cx + baseOff*conv + Math.sin(t*Math.PI*1.5+ph)*amp*(0.35+0.65*t);
+      const w=6-(6-1.7)*t;
+      segs.push([px,py,x,y,w,hue]); px=x; py=y;
+    }
+  }
+}
+
+/* crown bough angles: pillars get fixed ones, plus fillers for fullness */
+const LIMB={ 1:-0.30, 3:-0.62, 5:-0.98, 2:0.30, 4:0.62, 6:0.98 };
+const REACH={ 1:210, 3:230, 5:210, 2:210, 4:230, 6:210 };
 
 function buildSVG(filter){
-  filter=filter||"all"; srand(7);
+  filter=filter||"all"; srand(11);
   const segs=[], nodes=[];
-  // crown ambient density per pillar limb (hue: L→teal, R→gold)
+  trunkStrands(segs);
+  // crown — pillar boughs (L teal, R gold) + filler boughs for a full canopy
   DATA.pillars.forEach(p=>{
-    const a=LIMB[p.n], baseHue=(p.side==="L")?0.8:0.18;
-    grow(cx, forkY, a, REACH[p.n]*0.92, 6.5, 6, baseHue, false, segs, nodes);
-    grow(cx, forkY, a*0.7, REACH[p.n]*0.7, 4.5, 5, baseHue+0.05, false, segs, nodes);
+    const a=LIMB[p.n], hue=(p.side==="L")?0.84:0.12;
+    grow(cx, forkY, a, REACH[p.n], 5, 6, hue, false, segs, nodes);
+    grow(cx, forkY, a*0.55, REACH[p.n]*0.8, 3.5, 5, hue+0.06, false, segs, nodes);
   });
-  // roots ambient (gold)
-  for(let k=0;k<6;k++) grow(cx, baseY+2, (k-2.5)*0.42, 150, 7, 5, 0.05, true, segs, nodes);
+  [ [0,0.5], [-0.46,0.7], [0.46,0.3] ].forEach(f=>
+    grow(cx, forkY, f[0], 190*rr(0.85,1.05), 3.5, 5, f[1], false, segs, nodes));
+  // roots — wide symmetric fan, gold with a few teal
+  for(let k=0;k<9;k++) grow(cx, baseY+2, (k-4)*0.34, 155*rr(0.8,1.1), 5, 5, (k%3===0?0.55:0.05), true, segs, nodes);
 
-  const lines=(blur)=>segs.map(s=>`<line x1="${s[0].toFixed(1)}" y1="${s[1].toFixed(1)}" x2="${s[2].toFixed(1)}" y2="${s[3].toFixed(1)}" stroke="${mix(s[5])}" stroke-width="${(s[4]*(blur?2.1:1)).toFixed(2)}" stroke-opacity="${blur?0.5:0.9}" stroke-linecap="round"/>`).join("");
+  const lines=(blur)=>segs.map(s=>`<line x1="${s[0].toFixed(1)}" y1="${s[1].toFixed(1)}" x2="${s[2].toFixed(1)}" y2="${s[3].toFixed(1)}" stroke="${mix(s[5])}" stroke-width="${(s[4]*(blur?2.2:1)).toFixed(2)}" stroke-opacity="${blur?0.45:0.92}" stroke-linecap="round"/>`).join("");
 
   const S=[];
   S.push(`<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${W} ${H}" preserveAspectRatio="xMidYMid meet">`);
   S.push(`<defs>
-    <radialGradient id="bg" cx="50%" cy="46%" r="70%"><stop offset="0%" stop-color="#0a121c"/><stop offset="100%" stop-color="#04060a"/></radialGradient>
-    <radialGradient id="halo" cx="50%" cy="50%" r="50%"><stop offset="0%" stop-color="#13283a" stop-opacity=".55"/><stop offset="100%" stop-color="#04060a" stop-opacity="0"/></radialGradient>
-    <filter id="b" x="-30%" y="-30%" width="160%" height="160%"><feGaussianBlur stdDeviation="4"/></filter>
+    <radialGradient id="bg" cx="50%" cy="40%" r="75%"><stop offset="0%" stop-color="#091320"/><stop offset="100%" stop-color="#04060a"/></radialGradient>
+    <radialGradient id="halo" cx="50%" cy="50%" r="50%"><stop offset="0%" stop-color="#12283c" stop-opacity=".5"/><stop offset="100%" stop-color="#04060a" stop-opacity="0"/></radialGradient>
+    <filter id="b" x="-40%" y="-40%" width="180%" height="180%"><feGaussianBlur stdDeviation="4"/></filter>
     <filter id="b2" x="-60%" y="-60%" width="220%" height="220%"><feGaussianBlur stdDeviation="3"/><feMerge><feMergeNode in="blur"/><feMergeNode in="SourceGraphic"/></feMerge></filter>
   </defs>`);
   S.push(`<rect width="${W}" height="${H}" fill="url(#bg)"/>`);
-  S.push(`<ellipse cx="${cx}" cy="${forkY-40}" rx="640" ry="420" fill="url(#halo)"/>`);
-  // trunk (thick gold)
-  S.push(`<g filter="url(#b)" opacity=".85"><line x1="${cx}" y1="${baseY}" x2="${cx}" y2="${forkY}" stroke="${mix(0.12)}" stroke-width="30" stroke-linecap="round"/></g>`);
-  S.push(`<line x1="${cx}" y1="${baseY}" x2="${cx}" y2="${forkY}" stroke="${mix(0.15)}" stroke-width="13" stroke-linecap="round"/>`);
-  S.push(`<line x1="${cx}" y1="${baseY}" x2="${cx}" y2="${forkY}" stroke="#fff7e6" stroke-width="2.5" stroke-opacity=".5" stroke-linecap="round"/>`);
-  // ambient net: blurred glow pass (via <use>) + crisp pass
+  S.push(`<ellipse cx="${cx}" cy="${forkY-30}" rx="560" ry="430" fill="url(#halo)"/>`);
+  // net: blurred glow pass (via <use>) + crisp pass
   S.push(`<g id="net">${lines(false)}</g>`);
-  S.push(`<use href="#net" filter="url(#b)" opacity=".9"/>`);
+  S.push(`<use href="#net" filter="url(#b)" opacity=".95"/>`);
   S.push(`<use href="#net"/>`);
   // ambient glow points
-  nodes.forEach(nd=>{ S.push(`<circle cx="${nd[0].toFixed(1)}" cy="${nd[1].toFixed(1)}" r="${(nd[2]*2.2).toFixed(1)}" fill="${mix(nd[3])}" opacity=".22" filter="url(#b)"/><circle cx="${nd[0].toFixed(1)}" cy="${nd[1].toFixed(1)}" r="${nd[2].toFixed(1)}" fill="#eaffff" opacity=".9"/>`); });
+  nodes.forEach(nd=>{ S.push(`<circle cx="${nd[0].toFixed(1)}" cy="${nd[1].toFixed(1)}" r="${(nd[2]*2.3).toFixed(1)}" fill="${mix(nd[3])}" opacity=".2" filter="url(#b)"/><circle cx="${nd[0].toFixed(1)}" cy="${nd[1].toFixed(1)}" r="${nd[2].toFixed(1)}" fill="#f3ffff" opacity=".9"/>`); });
+  // a few brighter fireflies in the crown
+  srand(99);
+  for(let i=0;i<14;i++){ const fx=cx+rr(-360,360), fy=rr(110,400), r=rr(2,3.6), h=rr(0,1);
+    S.push(`<circle cx="${fx.toFixed(1)}" cy="${fy.toFixed(1)}" r="${(r*3).toFixed(1)}" fill="${mix(h)}" opacity=".22" filter="url(#b)"/><circle cx="${fx.toFixed(1)}" cy="${fy.toFixed(1)}" r="${r.toFixed(1)}" fill="#ffffff" opacity=".95"/>`); }
 
   // ── interactive overlay: pillar ganglia + project synapses ──
-  const place=DATA.pillars.map((p,i)=>{ const a=LIMB[p.n], R=REACH[p.n];
-    return { p, i, x:cx+Math.sin(a)*R, y:forkY-Math.cos(a)*R, a }; });
+  const place=DATA.pillars.map((p,i)=>{ const a=LIMB[p.n], R=REACH[p.n]*0.62;
+    return { p,i, x:cx+Math.sin(a)*R, y:forkY-Math.cos(a)*R, a }; });
   place.forEach(pl=>{
-    const p=pl.p, side=p.side, outer=(side==="L")?-1:1, anchor=(side==="L")?"end":"start";
+    const p=pl.p, outer=(p.side==="L")?-1:1, anchor=(p.side==="L")?"end":"start";
     const visible=p.projects.some(pr=>matchFilter(pr,filter));
-    // synapses fan beyond the ganglion along the limb direction
     const dx=Math.sin(pl.a), dy=-Math.cos(pl.a);
     p.projects.forEach((pr,j)=>{
-      const off=46+j*42, perp=(j-(p.projects.length-1)/2)*40;
+      const off=44+j*40, perp=(j-(p.projects.length-1)/2)*38;
       const sx=pl.x+dx*off - dy*perp, sy=pl.y+dy*off + dx*perp;
       const pcol=projColor(pr), vis=matchFilter(pr,filter);
-      S.push(`<g${vis?"":' class="dim"'}><line x1="${pl.x.toFixed(1)}" y1="${pl.y.toFixed(1)}" x2="${sx.toFixed(1)}" y2="${sy.toFixed(1)}" stroke="${pcol}" stroke-width="2" stroke-opacity=".55"/></g>`);
-      S.push(`<g class="opt"${vis?"":' opacity=".12"'} data-i="${pl.i}" data-j="${j}">`);
+      S.push(`<g${vis?"":' class="dim"'}><line x1="${pl.x.toFixed(1)}" y1="${pl.y.toFixed(1)}" x2="${sx.toFixed(1)}" y2="${sy.toFixed(1)}" stroke="${pcol}" stroke-width="1.8" stroke-opacity=".5"/></g>`);
+      S.push(`<g class="opt"${vis?"":' opacity=".1"'} data-i="${pl.i}" data-j="${j}">`);
       if(pr.next) S.push(`<circle class="pulse" cx="${sx.toFixed(1)}" cy="${sy.toFixed(1)}" r="11" fill="none" stroke="${STATUS.active}" stroke-width="2.4"/>`);
       S.push(`<circle cx="${sx.toFixed(1)}" cy="${sy.toFixed(1)}" r="13" fill="${pcol}" opacity=".22" filter="url(#b)"/>`);
-      S.push(`<circle cx="${sx.toFixed(1)}" cy="${sy.toFixed(1)}" r="6" fill="${pcol}" stroke="#fff" stroke-opacity=".5" stroke-width="1"/>`);
+      S.push(`<circle cx="${sx.toFixed(1)}" cy="${sy.toFixed(1)}" r="5.5" fill="${pcol}" stroke="#fff" stroke-opacity=".5" stroke-width="1"/>`);
       const lx=sx+outer*12;
-      S.push(`<text x="${lx.toFixed(1)}" y="${(sy-2).toFixed(1)}" text-anchor="${anchor}" class="pname" font-size="11.5">${esc(pr.name)}</text>`);
+      S.push(`<text x="${lx.toFixed(1)}" y="${(sy-2).toFixed(1)}" text-anchor="${anchor}" class="pname" font-size="11">${esc(pr.name)}</text>`);
       const sub=pr.files.length?pr.files.join(", "):(pr.status==="idea"?"→ next step":"no files yet");
-      S.push(`<text x="${lx.toFixed(1)}" y="${(sy+11).toFixed(1)}" text-anchor="${anchor}" class="leaf" font-size="9.5">${esc(sub)}</text>`);
+      S.push(`<text x="${lx.toFixed(1)}" y="${(sy+10).toFixed(1)}" text-anchor="${anchor}" class="leaf" font-size="9">${esc(sub)}</text>`);
       S.push(`</g>`);
     });
-    // ganglion
     S.push(`<g class="gang" data-i="${pl.i}"${visible?"":' opacity=".25"'}>`);
-    S.push(`<circle cx="${pl.x.toFixed(1)}" cy="${pl.y.toFixed(1)}" r="30" fill="#3ad2e8" opacity=".18" filter="url(#b)"/>`);
-    S.push(`<circle cx="${pl.x.toFixed(1)}" cy="${pl.y.toFixed(1)}" r="16" fill="#0a1620" stroke="#7fe6f2" stroke-width="2.4"/>`);
-    S.push(`<circle cx="${pl.x.toFixed(1)}" cy="${pl.y.toFixed(1)}" r="16" fill="#7fe6f2" fill-opacity=".18"/>`);
-    S.push(`<text x="${pl.x.toFixed(1)}" y="${(pl.y+5).toFixed(1)}" text-anchor="middle" class="pin-num" fill="#bff3fa" font-size="15">${p.n}</text>`);
-    const tx=pl.x+outer*26, ty=pl.y-26;
-    S.push(`<text x="${tx.toFixed(1)}" y="${ty.toFixed(1)}" text-anchor="${anchor}" class="ttl" font-size="14">${esc(p.name.toUpperCase())}</text>`);
+    S.push(`<circle cx="${pl.x.toFixed(1)}" cy="${pl.y.toFixed(1)}" r="26" fill="#3ad2e8" opacity=".16" filter="url(#b)"/>`);
+    S.push(`<circle cx="${pl.x.toFixed(1)}" cy="${pl.y.toFixed(1)}" r="14" fill="#0a1620" stroke="#8fecf6" stroke-width="2.2"/>`);
+    S.push(`<text x="${pl.x.toFixed(1)}" y="${(pl.y+5).toFixed(1)}" text-anchor="middle" class="pin-num" fill="#bff3fa" font-size="14">${p.n}</text>`);
+    const tx=pl.x+outer*24;
+    S.push(`<text x="${tx.toFixed(1)}" y="${(pl.y-22).toFixed(1)}" text-anchor="${anchor}" class="ttl" font-size="13">${esc(p.name.toUpperCase())}</text>`);
     S.push(`</g>`);
   });
 
   // 17BA brain at the base
-  S.push(`<circle cx="${cx}" cy="${baseY}" r="46" fill="#ff5a5a" opacity=".2" filter="url(#b)"/>`);
-  S.push(`<circle cx="${cx}" cy="${baseY}" r="22" fill="#0a0e15" stroke="#ff6a6a" stroke-width="3"/>`);
-  S.push(`<circle cx="${cx}" cy="${baseY}" r="9" fill="#ff6a6a" filter="url(#b2)"/>`);
-  S.push(`<text x="${cx}" y="${baseY+44}" text-anchor="middle" fill="#ff8a8a" font-size="16" font-weight="800" letter-spacing="2">${esc(DATA.core.name)}</text>`);
+  S.push(`<circle cx="${cx}" cy="${baseY}" r="44" fill="#ff5a5a" opacity=".18" filter="url(#b)"/>`);
+  S.push(`<circle cx="${cx}" cy="${baseY}" r="20" fill="#0a0e15" stroke="#ff6a6a" stroke-width="3"/>`);
+  S.push(`<circle cx="${cx}" cy="${baseY}" r="8" fill="#ff6a6a" filter="url(#b2)"/>`);
+  S.push(`<text x="${cx}" y="${(baseY+42).toFixed(1)}" text-anchor="middle" fill="#ff8a8a" font-size="15" font-weight="800" letter-spacing="2">${esc(DATA.core.name)}</text>`);
   S.push(`</svg>`);
   return S.join("");
 }
@@ -234,14 +253,14 @@ if (typeof document!=="undefined"){
   function highlight(i){ document.querySelectorAll(".gang,.opt").forEach(b=>{ if(+b.dataset.i!==i) b.classList.add("dim"); }); }
   function openPillar(i){
     const pil=DATA.pillars[i];
-    let h=`<div class="pp-pillar" style="color:#7fe6f2">NERVE ${pil.n} · ${esc(pil.name.toUpperCase())}</div><h2>${esc(pil.name)}</h2>`;
+    let h=`<div class="pp-pillar" style="color:#8fecf6">NERVE ${pil.n} · ${esc(pil.name.toUpperCase())}</div><h2>${esc(pil.name)}</h2>`;
     h+=`<div class="row" style="margin-top:4px">${esc(pil.blurb)}</div><div class="files" style="margin-top:14px">`;
     pil.projects.forEach(pr=>{ h+=`<div class="f"><i style="width:9px;height:9px;border-radius:50%;display:inline-block;background:${projColor(pr)}"></i><b style="color:#dfe5ee">${esc(pr.name)}</b> <span style="color:#69748a">· ${esc(STATUS_LABEL[pr.status]||pr.status)}${pr.next?" · NEXT":""}</span></div>`; });
     h+=`</div>`; showPanel(h);
   }
   function openProject(i,j){
     const pil=DATA.pillars[i], pr=pil.projects[j];
-    let h=`<div class="pp-pillar" style="color:#7fe6f2">${esc(pil.name.toUpperCase())}</div><h2>${esc(pr.name)}</h2>`;
+    let h=`<div class="pp-pillar" style="color:#8fecf6">${esc(pil.name.toUpperCase())}</div><h2>${esc(pr.name)}</h2>`;
     h+=`<div class="stat" style="background:${projColor(pr)}1f;color:${projColor(pr)}"><span style="width:8px;height:8px;border-radius:50%;background:${projColor(pr)};display:inline-block"></span>${esc(STATUS_LABEL[pr.status]||pr.status)}${pr.next?" · firing next":""}</div>`;
     h+=`<div class="row">Agent: <b>${esc(pr.agent||"—")}</b></div><div class="row" style="display:block">Files:`;
     if(pr.files.length) h+=`<div class="files">`+pr.files.map(f=>`<div class="f">📄 ${esc(f)}</div>`).join("")+`</div>`;
