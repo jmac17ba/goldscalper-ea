@@ -1,0 +1,196 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1"/>
+<title>The Bots — Chakka &amp; Quasheba | BAD APPLE</title>
+<style>
+  :root{
+    --black:#070506; --ink:#f3ece0; --mut:#9a9088;
+    --gold:#c9a84c; --gold2:#f3d27a; --oxblood:#7d1f1f; --ox2:#a83232;
+    --teal:#3ad2e8; --line:#221b18; --card:#0d0a09;
+  }
+  *{box-sizing:border-box; margin:0; padding:0}
+  html{scroll-behavior:smooth}
+  body{ background:var(--black); color:var(--ink);
+    font-family:"Helvetica Neue",Helvetica,Arial,sans-serif; line-height:1.6; }
+  h1,h2,h3{ font-family:"Georgia","Times New Roman",serif; font-weight:700; letter-spacing:.5px; }
+  a{ color:var(--gold); }
+  .wrap{ max-width:1080px; margin:0 auto; padding:0 28px; }
+
+  header{ position:sticky; top:0; z-index:10; display:flex; align-items:center; gap:14px;
+    padding:16px 28px; background:rgba(7,5,6,.92); border-bottom:1px solid var(--line); backdrop-filter:blur(6px); }
+  header .logo{ font-family:Georgia,serif; font-weight:700; letter-spacing:4px; font-size:17px; }
+  header .logo b{ color:var(--gold); }
+  header .logo a{ color:var(--ink); text-decoration:none; }
+  header .nav{ margin-left:auto; display:flex; gap:22px; font-size:12.5px; letter-spacing:1.5px; text-transform:uppercase; }
+  header .nav a{ color:var(--mut); text-decoration:none; transition:.2s; } header .nav a:hover{ color:var(--gold); }
+
+  .hero{ text-align:center; padding:84px 28px 60px; background:radial-gradient(120% 90% at 50% 0%, #140d0a, var(--black) 70%); }
+  .hero .kick{ color:var(--gold); letter-spacing:5px; text-transform:uppercase; font-size:12px; }
+  .hero h1{ font-size:clamp(44px,8vw,86px); line-height:.98; margin:16px 0 10px;
+    background:linear-gradient(180deg,#fff,var(--gold)); -webkit-background-clip:text; background-clip:text; color:transparent; }
+  .hero .tag{ color:var(--gold2); font-style:italic; font-family:Georgia,serif; font-size:clamp(15px,2.2vw,20px); }
+  .hero p.sub{ color:var(--mut); max-width:640px; margin:18px auto 0; }
+
+  section{ padding:60px 0; border-top:1px solid var(--line); }
+  .eyebrow{ color:var(--gold); letter-spacing:4px; text-transform:uppercase; font-size:11.5px; margin-bottom:14px; }
+  h2.big{ font-size:clamp(28px,4.5vw,46px); line-height:1.05; margin-bottom:14px; }
+  p.lead{ font-size:clamp(16px,2vw,19px); max-width:680px; color:var(--ink); }
+  p.body{ color:var(--mut); max-width:680px; margin-top:14px; }
+
+  .steps{ display:grid; grid-template-columns:repeat(auto-fit,minmax(220px,1fr)); gap:18px; margin-top:30px; }
+  .step{ background:var(--card); border:1px solid var(--line); border-radius:6px; padding:20px; }
+  .step .n{ font-family:Georgia,serif; color:var(--gold); font-size:30px; line-height:1; }
+  .step h3{ font-size:16px; margin:10px 0 6px; } .step p{ color:var(--mut); font-size:13.5px; }
+
+  .bots{ display:grid; grid-template-columns:1fr 1fr; gap:22px; margin-top:30px; }
+  @media(max-width:760px){ .bots{ grid-template-columns:1fr; } }
+  .bot{ background:var(--card); border:1px solid var(--line); border-radius:8px; padding:26px; position:relative; overflow:hidden; }
+  .bot::before{ content:""; position:absolute; top:0; left:0; right:0; height:3px; }
+  .bot.chakka::before{ background:linear-gradient(90deg,var(--gold),var(--ox2)); }
+  .bot.quasheba::before{ background:linear-gradient(90deg,var(--teal),var(--gold)); }
+  .bot .name{ font-family:Georgia,serif; font-size:26px; }
+  .bot .epi{ color:var(--gold); font-size:12.5px; letter-spacing:2px; text-transform:uppercase; margin-top:2px; }
+  .bot .desc{ color:var(--mut); font-size:14px; margin:14px 0; }
+  .bot ul{ list-style:none; margin:14px 0; } .bot li{ font-size:13.5px; padding:6px 0; border-bottom:1px solid var(--line); color:var(--ink); }
+  .bot li b{ color:var(--gold); }
+  .price{ font-family:Georgia,serif; font-size:22px; margin-top:14px; }
+  .price small{ color:var(--mut); font-size:12px; font-family:inherit; }
+  .btn{ display:inline-block; margin-top:16px; background:var(--gold); color:#1a1206; font-weight:700;
+    padding:13px 26px; border-radius:3px; letter-spacing:1.5px; text-transform:uppercase; font-size:12.5px; text-decoration:none; }
+  .btn.ghost{ background:transparent; color:var(--gold); border:1px solid var(--gold); }
+
+  table.cmp{ width:100%; border-collapse:collapse; margin-top:24px; font-size:14px; }
+  table.cmp th, table.cmp td{ text-align:left; padding:12px 14px; border-bottom:1px solid var(--line); }
+  table.cmp th{ color:var(--gold); font-weight:600; letter-spacing:.5px; }
+  table.cmp td:first-child{ color:var(--mut); }
+
+  .riskbox{ background:#160a0a; border:1px solid #3a1414; border-left:3px solid var(--ox2); border-radius:6px;
+    padding:20px 22px; margin-top:30px; color:#e8c9c4; font-size:14px; }
+  .riskbox b{ color:#ff9a8a; }
+
+  footer{ text-align:center; padding:50px 24px; border-top:1px solid var(--line); }
+  footer .lock{ font-family:Georgia,serif; letter-spacing:4px; color:var(--gold); font-size:13px; }
+  footer .ft{ color:var(--mut); font-style:italic; font-family:Georgia,serif; margin-top:8px; font-size:12.5px; }
+  footer .small{ color:#5b524b; font-size:11px; margin-top:18px; }
+  footer a{ color:var(--mut); }
+</style>
+</head>
+<body>
+
+<header>
+  <div class="logo"><a href="index.html"><b>🍎</b> BAD APPLE</a></div>
+  <nav class="nav">
+    <a href="index.html">Home</a>
+    <a href="#how">How it works</a>
+    <a href="#compare">Compare</a>
+    <a href="risk.html">Risk</a>
+  </nav>
+</header>
+
+<div class="hero">
+  <div class="kick">Branch One — The Bots</div>
+  <h1>Chakka &amp; Quasheba</h1>
+  <div class="tag">The bot is the classroom. The philosophy is the lesson.</div>
+  <p class="sub">Two automated MetaTrader 5 expert advisors built on one engine. Owning one is your entry into the whole Bad Apple ecosystem — and the way you actually learn how markets move. We never promise returns. We teach you to think for yourself.</p>
+  <a class="btn" href="#bots" style="margin-top:24px">See the bots</a>
+</div>
+
+<section id="how">
+  <div class="wrap">
+    <div class="eyebrow">How it works</div>
+    <h2 class="big">A breakout entry, then a disciplined recovery basket.</h2>
+    <p class="lead">Both bots run the same engine: a <b style="color:var(--gold)">pending one-cancels-other (OCO) breakout</b>. A BUY STOP is set above price and a SELL STOP below — whichever the market reaches first fills, and the other is cancelled. The filled side then runs a <b style="color:var(--gold)">Fibonacci recovery basket</b> that closes at a combined take-profit, with an emergency drawdown guard watching the whole time.</p>
+    <div class="steps">
+      <div class="step"><div class="n">1</div><h3>It sets the trap</h3><p>When flat, the bot places a BUY STOP above and SELL STOP below the current price — set, not entered.</p></div>
+      <div class="step"><div class="n">2</div><h3>One side fills</h3><p>Price breaks one way; that order fills and rides the move. The opposite pending is cancelled automatically.</p></div>
+      <div class="step"><div class="n">3</div><h3>The basket manages</h3><p>If price moves against the fill, the bot adds measured recovery levels, aiming for a combined take-profit.</p></div>
+      <div class="step"><div class="n">4</div><h3>The guard watches</h3><p>An emergency drawdown guard can cut the basket if floating loss exceeds your set % of balance.</p></div>
+    </div>
+    <p class="body">You keep full custody — the bot runs on your own MetaTrader 5 / broker account. It executes; you stay in control. Running it is how you learn ranges, volatility, entries, exits, and above all <b style="color:var(--gold)">risk management and discipline</b>.</p>
+  </div>
+</section>
+
+<section id="bots">
+  <div class="wrap">
+    <div class="eyebrow">The two characters</div>
+    <h2 class="big">Same engine. Two risk personalities.</h2>
+    <div class="bots">
+      <div class="bot chakka">
+        <div class="name">Chakka</div>
+        <div class="epi">The Grind · aggressive</div>
+        <div class="desc">XAUUSD (gold) on M15. The solo grinder — deeper averaging, more levels, more bite. For traders who understand the risk they're taking.</div>
+        <ul>
+          <li>Chart: <b>XAUUSD · M15</b></li>
+          <li>Engine: OCO breakout + <b>12-level</b> Fibonacci recovery</li>
+          <li>Drawdown guard: cut at <b>20%</b> floating loss (adjustable)</li>
+          <li>Volatility (ATR) filter + order-block / liquidity filter</li>
+          <li>File: <b>17BA_Chakka.mq5</b></li>
+        </ul>
+        <div class="price">Price TBC <small>/ one-time · unlocks membership</small></div>
+        <a class="btn" href="#get">Get Chakka</a>
+      </div>
+      <div class="bot quasheba">
+        <div class="name">Quasheba</div>
+        <div class="epi">The Legacy · disciplined</div>
+        <div class="desc">Any pair. The long-game builder — tamer, multi-instrument, wider spacing. Auto-scales its distances to each symbol's volatility.</div>
+        <ul>
+          <li>Chart: <b>any pair</b> (M1 / M15)</li>
+          <li>Engine: OCO breakout + <b>5-level</b> recovery (tamer)</li>
+          <li>Drawdown guard: cut at <b>15%</b> floating loss (adjustable)</li>
+          <li>Auto-scales to non-gold symbols; multi-chart capable</li>
+          <li>File: <b>17BA_Kwasheba.mq5</b></li>
+        </ul>
+        <div class="price">Price TBC <small>/ one-time · unlocks membership</small></div>
+        <a class="btn" href="#get">Get Quasheba</a>
+      </div>
+    </div>
+  </div>
+</section>
+
+<section id="compare">
+  <div class="wrap">
+    <div class="eyebrow">Compare</div>
+    <h2 class="big">Which one fits you?</h2>
+    <table class="cmp">
+      <tr><th>&nbsp;</th><th>Chakka — The Grind</th><th>Quasheba — The Legacy</th></tr>
+      <tr><td>Instrument</td><td>XAUUSD (gold) only</td><td>Any pair (auto-scales)</td></tr>
+      <tr><td>Timeframe</td><td>M15</td><td>M1 / M15</td></tr>
+      <tr><td>Recovery levels</td><td>Up to 12 (aggressive)</td><td>Up to 5 (tamer)</td></tr>
+      <tr><td>Default drawdown guard</td><td>20% of balance</td><td>15% of balance</td></tr>
+      <tr><td>Best for</td><td>Experienced, gold-focused, higher risk tolerance</td><td>Multi-pair, disciplined, lower risk tolerance</td></tr>
+    </table>
+  </div>
+</section>
+
+<section id="get">
+  <div class="wrap">
+    <div class="eyebrow">Getting started</div>
+    <h2 class="big">Set up in minutes — then test on demo.</h2>
+    <div class="steps">
+      <div class="step"><div class="n">1</div><h3>Get MetaTrader 5</h3><p>Install MT5 from your broker (Deriv recommended for low XAUUSD spreads).</p></div>
+      <div class="step"><div class="n">2</div><h3>Install the bot</h3><p>Drop the .mq5 file into MQL5 → Experts, compile (F7), refresh the Navigator.</p></div>
+      <div class="step"><div class="n">3</div><h3>Attach &amp; allow</h3><p>Open the right chart, drag the EA on, tick Allow Algo Trading. You'll see the breakout lines set.</p></div>
+      <div class="step"><div class="n">4</div><h3>Demo first</h3><p>Run it on a demo account and in the Strategy Tester before risking real funds. Always.</p></div>
+    </div>
+    <div style="margin-top:30px; display:flex; gap:14px; flex-wrap:wrap; align-items:center">
+      <a class="btn" href="mailto:hello@badapple.example?subject=Bad%20Apple%20Bot%20Access">Request access</a>
+      <a class="btn ghost" href="risk.html">Read the risk disclosure first</a>
+    </div>
+    <p class="body" style="margin-top:18px">Buying a bot unlocks <b style="color:var(--gold)">exclusive-member status</b> across the whole ecosystem — the Collections, Corefuel, and the Academy. <em>Checkout &amp; instant download coming soon; for now, request access and we'll get you set up.</em></p>
+
+    <div class="riskbox">
+      <b>⚠️ Honest risk warning.</b> Trading gold and FX is high-risk and can lose money. These EAs use grid/recovery methods that can draw down heavily in strong trends. <b>No profit is guaranteed and we never promise returns.</b> They are tools for education and disciplined participation — not get-rich-quick schemes. Test on a demo account and backtest in the Strategy Tester before risking real funds. <a href="risk.html">Read the full risk disclosure →</a>
+    </div>
+  </div>
+</section>
+
+<footer>
+  <div class="lock">BAD APPLE • CHAKKA • QUASHEBA • COREFUEL</div>
+  <div class="ft">Fallen from the tree. Sharper for the fall.</div>
+  <div class="small"><a href="index.html">Home</a> · <a href="risk.html">Risk disclosure</a> · For your own use only — do not redistribute.</div>
+</footer>
+
+</body>
+</html>

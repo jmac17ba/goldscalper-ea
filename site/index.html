@@ -1,0 +1,357 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1"/>
+<title>BAD APPLE — Fallen from the tree. Sharper for the fall.</title>
+<style>
+  :root{
+    --black:#070506; --ink:#f3ece0; --mut:#9a9088;
+    --gold:#c9a84c; --gold2:#f3d27a; --oxblood:#7d1f1f; --ox2:#a83232;
+    --teal:#3ad2e8; --line:#221b18;
+  }
+  *{box-sizing:border-box; margin:0; padding:0}
+  html{scroll-behavior:smooth}
+  body{ background:var(--black); color:var(--ink);
+    font-family:"Helvetica Neue",Helvetica,Arial,sans-serif; overflow-x:hidden; }
+  .serif{ font-family:"Georgia","Times New Roman",serif; }
+  h1,h2,h3{ font-family:"Georgia","Times New Roman",serif; font-weight:700; letter-spacing:.5px; }
+
+  /* ── fixed glowing tree canvas behind everything ── */
+  #treeWrap{ position:fixed; inset:0; z-index:0; pointer-events:none; }
+  #treeWrap svg{ width:100%; height:100%; display:block; }
+  .veil{ position:fixed; inset:0; z-index:1; pointer-events:none;
+    background:radial-gradient(120% 90% at 50% 30%, transparent 40%, rgba(7,5,6,.55) 100%); }
+
+  /* ── side progress nerve-line ── */
+  #rail{ position:fixed; top:0; left:34px; bottom:0; width:2px; z-index:6;
+    background:linear-gradient(180deg, transparent, #2a2018 12%, #2a2018 88%, transparent); }
+  #railFill{ position:absolute; top:0; left:-1px; width:4px; height:0;
+    background:linear-gradient(180deg,var(--gold2),var(--gold),var(--oxblood));
+    box-shadow:0 0 12px var(--gold); border-radius:4px; }
+  #railDots{ position:fixed; top:0; left:26px; bottom:0; z-index:7; }
+  .rdot{ position:absolute; left:2px; width:11px; height:11px; border-radius:50%;
+    border:1.5px solid #3a2d22; background:var(--black); transition:.3s; cursor:pointer; }
+  .rdot.on{ background:var(--gold); border-color:var(--gold2); box-shadow:0 0 12px var(--gold); }
+
+  /* ── top brand bar ── */
+  header{ position:fixed; top:0; left:0; right:0; height:62px; z-index:8;
+    display:flex; align-items:center; gap:14px; padding:0 28px 0 64px;
+    background:linear-gradient(180deg, rgba(7,5,6,.92), transparent); }
+  header .logo{ font-family:Georgia,serif; font-weight:700; letter-spacing:4px; font-size:18px; color:var(--ink); }
+  header .logo b{ color:var(--gold); }
+  header .nav{ margin-left:auto; display:flex; gap:26px; font-size:12.5px; letter-spacing:1.5px; color:var(--mut); text-transform:uppercase; }
+  header .nav a{ color:var(--mut); text-decoration:none; transition:.2s; }
+  header .nav a:hover{ color:var(--gold); }
+  header .cta{ border:1px solid var(--gold); color:var(--gold); padding:8px 16px; border-radius:2px;
+    font-size:11.5px; letter-spacing:1.5px; text-transform:uppercase; }
+
+  /* ── sections ── */
+  main{ position:relative; z-index:3; }
+  section{ min-height:100vh; display:flex; flex-direction:column; justify-content:center;
+    padding:120px 64px 120px 96px; position:relative; }
+  .kicker{ color:var(--gold); font-size:12px; letter-spacing:5px; text-transform:uppercase; margin-bottom:18px; }
+  .reveal{ opacity:0; transform:translateY(38px); transition:opacity .9s ease, transform .9s ease; }
+  .reveal.in{ opacity:1; transform:none; }
+  .d1{transition-delay:.08s} .d2{transition-delay:.18s} .d3{transition-delay:.28s} .d4{transition-delay:.38s}
+
+  /* HERO */
+  #hero{ align-items:center; text-align:center; }
+  #hero h1{ font-size:clamp(64px,13vw,190px); line-height:.92; letter-spacing:2px;
+    background:linear-gradient(180deg,#fff 0%,#e7d9bd 55%,var(--gold) 100%);
+    -webkit-background-clip:text; background-clip:text; color:transparent;
+    text-shadow:0 0 60px rgba(201,168,76,.25); }
+  #hero .tag{ color:var(--gold2); font-style:italic; font-family:Georgia,serif; font-size:clamp(16px,2.4vw,26px); margin-top:22px; letter-spacing:1px; }
+  #hero .rule{ width:120px; height:1px; background:linear-gradient(90deg,transparent,var(--gold),transparent); margin:30px auto; }
+  #hero .sub{ color:var(--mut); max-width:560px; margin:0 auto; font-size:15px; line-height:1.7; }
+  .scrollcue{ position:absolute; bottom:38px; left:50%; transform:translateX(-50%); color:var(--mut); font-size:11px; letter-spacing:3px; text-transform:uppercase; }
+  .scrollcue .ar{ display:block; margin:10px auto 0; width:14px; height:14px; border-right:1.5px solid var(--gold); border-bottom:1.5px solid var(--gold); transform:rotate(45deg); animation:bob 1.6s ease-in-out infinite; }
+  @keyframes bob{0%,100%{transform:rotate(45deg) translate(0,0);opacity:.4}50%{transform:rotate(45deg) translate(4px,4px);opacity:1}}
+
+  .big{ font-size:clamp(34px,6vw,76px); line-height:1.02; }
+  .lead{ color:var(--ink); font-size:clamp(17px,2.1vw,22px); line-height:1.6; max-width:620px; margin-top:22px; }
+  .body{ color:var(--mut); font-size:15.5px; line-height:1.75; max-width:560px; margin-top:18px; }
+  .quote{ font-family:Georgia,serif; font-style:italic; color:var(--gold2); font-size:clamp(22px,3.2vw,38px);
+    line-height:1.35; max-width:760px; border-left:2px solid var(--oxblood); padding-left:26px; }
+
+  /* branch sections share a layout; side controls which edge the card sits */
+  .branch{ }
+  .branch .num{ font-family:Georgia,serif; font-size:clamp(70px,11vw,150px); color:#1c1512; line-height:.8;
+    position:absolute; top:80px; }
+  .branch.R{ align-items:flex-end; text-align:right; padding-right:96px; }
+  .branch.R .lead,.branch.R .body{ margin-left:auto; }
+  .branch.R .num{ right:64px; }
+  .branch.L .num{ left:96px; }
+  .branch .feeds{ display:inline-block; margin-top:22px; color:var(--gold); border:1px solid #3a2d22;
+    padding:7px 14px; border-radius:2px; font-size:11.5px; letter-spacing:2px; text-transform:uppercase; }
+
+  /* candlesticks (Bots) */
+  .candles{ display:flex; align-items:flex-end; gap:10px; height:120px; margin-top:30px; }
+  .candle{ width:12px; position:relative; }
+  .candle i{ position:absolute; left:50%; transform:translateX(-50%); width:2px; background:#4a3a2a; }
+  .candle b{ display:block; width:100%; border-radius:1px; }
+  .up b{ background:var(--gold); } .dn b{ background:var(--oxblood); }
+
+  /* madras plaid swatch (Collections) */
+  .madras{ width:min(420px,40vw); height:200px; margin-top:26px; border:1px solid #2a2018; border-radius:3px;
+    background-image:
+      repeating-linear-gradient(0deg, rgba(201,168,76,.0) 0 12px, rgba(201,168,76,.25) 12px 16px, rgba(125,31,31,.0) 16px 28px, rgba(125,31,31,.45) 28px 34px),
+      repeating-linear-gradient(90deg, rgba(201,168,76,.0) 0 12px, rgba(201,168,76,.22) 12px 16px, rgba(125,31,31,.0) 16px 28px, rgba(125,31,31,.4) 28px 34px),
+      linear-gradient(180deg,#120d0b,#0c0807);
+  }
+
+  /* product chips */
+  .chips{ display:flex; gap:10px; flex-wrap:wrap; margin-top:24px; }
+  .pc{ border:1px solid #2c2218; color:var(--mut); padding:8px 14px; font-size:12px; letter-spacing:1px; border-radius:2px; }
+
+  /* corefuel core ring */
+  .core{ width:160px; height:160px; border-radius:50%; margin-top:24px; position:relative;
+    background:radial-gradient(circle at 50% 50%, rgba(201,168,76,.25), transparent 70%);
+    border:1px solid #2a2018; display:flex; align-items:center; justify-content:center; }
+  .core::before{ content:""; position:absolute; inset:34px; border-radius:50%; border:1px solid var(--gold); box-shadow:0 0 24px rgba(201,168,76,.4) inset; }
+  .core span{ font-family:Georgia,serif; color:var(--gold2); font-size:13px; letter-spacing:2px; }
+
+  /* JOIN */
+  #join{ align-items:center; text-align:center; }
+  #join .btn{ display:inline-block; margin-top:30px; background:var(--gold); color:#1a1206; font-weight:700;
+    padding:15px 38px; border-radius:2px; letter-spacing:2px; text-transform:uppercase; font-size:13px; }
+  #join .flywheel{ display:flex; gap:18px; flex-wrap:wrap; justify-content:center; margin-top:34px; color:var(--mut); font-size:12px; letter-spacing:1.5px; }
+  #join .flywheel b{ color:var(--gold); }
+
+  .risk{ margin-top:26px; max-width:620px; color:#7c7068; font-size:12px; line-height:1.6; border-top:1px solid var(--line); padding-top:16px; }
+
+  footer{ position:relative; z-index:3; text-align:center; padding:60px 24px 50px; border-top:1px solid var(--line); }
+  footer .lock{ font-family:Georgia,serif; letter-spacing:4px; color:var(--gold); font-size:14px; }
+  footer .ft{ color:var(--mut); font-style:italic; font-family:Georgia,serif; margin-top:10px; font-size:13px; }
+  footer .small{ color:#5b524b; font-size:11px; margin-top:22px; letter-spacing:1px; }
+</style>
+</head>
+<body>
+
+<div id="treeWrap"><!-- SVG injected by JS --></div>
+<div class="veil"></div>
+
+<div id="rail"><div id="railFill"></div></div>
+<div id="railDots"></div>
+
+<header>
+  <div class="logo"><b>🍎</b> BAD APPLE</div>
+  <nav class="nav">
+    <a href="bots.html">Bots</a>
+    <a href="#collections">Collections</a>
+    <a href="#corefuel">Corefuel</a>
+    <a href="#academy">Academy</a>
+    <a href="risk.html">Risk</a>
+  </nav>
+  <a class="cta" href="bots.html" style="text-decoration:none">Get a Bot</a>
+</header>
+
+<main>
+  <!-- 1 HERO -->
+  <section id="hero">
+    <div class="reveal in">
+      <h1 class="serif">BAD<br>APPLE</h1>
+      <div class="rule"></div>
+      <div class="tag">Fallen from the tree. Sharper for the fall.</div>
+      <p class="sub">A lifestyle &amp; financial-empowerment ecosystem for people who think for themselves — automated trading, exclusive streetwear, performance wellness, and real financial education. All grown from one root.</p>
+    </div>
+    <div class="scrollcue">Scroll to grow the tree<span class="ar"></span></div>
+  </section>
+
+  <!-- 2 PHILOSOPHY -->
+  <section id="philosophy" class="branch L">
+    <div class="kicker reveal">The Philosophy — The Tree</div>
+    <h2 class="big reveal d1">Not rotten.<br><span style="color:var(--gold)">Freed.</span></h2>
+    <p class="lead reveal d2">The tree is the system that tells you how to live, what to want, how to obey. A Bad Apple is the fruit that falls from it — the moment it separates and begins to think for itself.</p>
+    <p class="body reveal d3">The bruise it takes on the way down — what we call its <i>butteriness</i> — isn't damage. It's character. The marks left by a system that was never built for you are exactly what make you sharper, freer, self-determined.</p>
+  </section>
+
+  <!-- 3 ECOSYSTEM -->
+  <section id="ecosystem">
+    <div class="kicker reveal">The Ecosystem As A Tree</div>
+    <blockquote class="quote reveal d1">“They fell from the tree of thinking they were told to think. The bruise is the brand.”</blockquote>
+    <p class="body reveal d2">Every product is a fruit of the same root: knowledge, discipline, and self-determination. Arrive for one fruit and you're standing under the whole tree — four branches that feed each other.</p>
+  </section>
+
+  <!-- 4 BOTS -->
+  <section id="bots" class="branch L">
+    <div class="num serif reveal">01</div>
+    <div class="kicker reveal">Branch One — The Bots</div>
+    <h2 class="big reveal d1">Chakka &amp; Quasheba</h2>
+    <p class="lead reveal d2">Two automated grid-trading bots — the commercial engine and the entry point to everything. Buying a bot unlocks exclusive-member status.</p>
+    <p class="body reveal d3">But the bot isn't just a money tool — it's the classroom. Running it is how you learn how markets actually move: ranges, volatility, entries, exits, and above all <b style="color:var(--gold)">risk management and discipline.</b></p>
+    <div class="candles reveal d3" id="candleRow"></div>
+    <span class="feeds reveal d4">Feeds → Wealth-building &amp; financial literacy</span>
+  </section>
+
+  <!-- 5 COLLECTIONS -->
+  <section id="collections" class="branch R">
+    <div class="num serif reveal">02</div>
+    <div class="kicker reveal">Branch Two — The Collections</div>
+    <h2 class="big reveal d1">Wear the philosophy.</h2>
+    <p class="lead reveal d2">Premium streetwear sold as exclusive, limited drops. Each piece fuses Jamaican heritage with quantitative trading knowledge — the wearer carries the philosophy and the math on their body.</p>
+    <div class="madras reveal d3" style="margin-left:auto"></div>
+    <div class="chips reveal d4" style="justify-content:flex-end">
+      <span class="pc">Madras plaid</span><span class="pc">Candlestick prints</span><span class="pc">NFC-authenticated</span><span class="pc">3D embroidery</span>
+    </div>
+    <span class="feeds reveal d4">Feeds → Identity, lifestyle, belonging</span>
+  </section>
+
+  <!-- 6 COREFUEL -->
+  <section id="corefuel" class="branch L">
+    <div class="num serif reveal">03</div>
+    <div class="kicker reveal">Branch Three — Corefuel</div>
+    <h2 class="big reveal d1">Build the core.<br>Build the wealth.<br>Build the self.</h2>
+    <p class="lead reveal d2">Gym &amp; performance wear and a custom supplement line. You cannot build wealth without building yourself first — discipline in the gym is the discipline that makes a trader.</p>
+    <div class="core reveal d3"><span>COREFUEL</span></div>
+    <span class="feeds reveal d4">Feeds → Physical discipline &amp; performance</span>
+  </section>
+
+  <!-- 7 ACADEMY -->
+  <section id="academy" class="branch R">
+    <div class="num serif reveal">04</div>
+    <div class="kicker reveal">Branch Four — The Academy</div>
+    <h2 class="big reveal d1">The root of it all.</h2>
+    <p class="lead reveal d2">Free financial-literacy education — trading breakdowns, the missing money basics, told in the brand's voice. Education builds trust, trust builds community, community buys everything else on the tree.</p>
+    <p class="body reveal d3" style="margin-left:auto">No hype. No guaranteed-returns claims. <b style="color:var(--gold)">Credibility is the product.</b></p>
+    <span class="feeds reveal d4">Feeds → Knowledge — the root of it all</span>
+  </section>
+
+  <!-- 8 JOIN -->
+  <section id="join">
+    <div class="kicker reveal">One Tree. One Community.</div>
+    <h2 class="big reveal d1">Fall from the tree.</h2>
+    <p class="lead reveal d2" style="margin:22px auto 0">Bad Apple is a way of thinking and a community of people who fell from the same tree. Start with a bot, wear the collection, train in Corefuel, learn in the Academy.</p>
+    <a class="btn reveal d3" href="bots.html" style="text-decoration:none">Start with a bot</a>
+    <div class="flywheel reveal d4">
+      <span><b>Bots</b> → the entry</span><span><b>Collections</b> → the identity</span><span><b>Corefuel</b> → the discipline</span><span><b>Academy</b> → the root</span>
+    </div>
+    <p class="risk reveal d4">Risk warning: trading carries real risk of loss. Our bots are tools for education and disciplined participation — not get-rich-quick schemes, and we never promise returns. Test on demo first. This honesty <i>is</i> the brand: Bad Apples think for themselves. <a href="risk.html" style="color:var(--gold)">Full risk disclosure →</a></p>
+  </section>
+</main>
+
+<footer>
+  <div class="lock">BAD APPLE • CHAKKA • QUASHEBA • COREFUEL</div>
+  <div class="ft">Fallen from the tree. Sharper for the fall.</div>
+  <div class="small">Confidential brand &amp; business overview · prototype mockup</div>
+</footer>
+
+<script>
+/* ───────── procedural glowing tree that GROWS with scroll ─────────
+   Deterministic seeded RNG so the tree is identical every load.        */
+let SEED=7;
+function rnd(){ SEED=SEED+0x6D2B79F5|0; let t=Math.imul(SEED^SEED>>>15,1|SEED); t=t+Math.imul(t^t>>>7,61|t)^t; return ((t^t>>>14)>>>0)/4294967296; }
+function rr(a,b){return a+(b-a)*rnd();}
+const GOLD=[201,168,76], TEAL=[58,210,232], OX=[168,50,50];
+function mix3(t){ // 0=gold ... .5=teal ... 1=oxblood, with a glow toward white at branch tips handled separately
+  let c;
+  if(t<0.5){ const k=t/0.5; c=[GOLD[0]+(TEAL[0]-GOLD[0])*k, GOLD[1]+(TEAL[1]-GOLD[1])*k, GOLD[2]+(TEAL[2]-GOLD[2])*k]; }
+  else { const k=(t-0.5)/0.5; c=[TEAL[0]+(OX[0]-TEAL[0])*k, TEAL[1]+(OX[1]-TEAL[1])*k, TEAL[2]+(OX[2]-TEAL[2])*k]; }
+  return "#"+c.map(v=>Math.round(v).toString(16).padStart(2,"0")).join("");
+}
+
+const W=1440, H=900, cx=720, baseY=820, forkY=470;
+const segs=[]; // [x1,y1,x2,y2,w,hue,depthFrac]  depthFrac: 0=trunk/early ... 1=outer tip (controls grow order)
+function grow(x,y,ang,len,w,depth,hue,down,order){
+  if(!down && y<70) return;
+  if(down && y>H-10) return;
+  if(depth<=0||len<16){ return; }
+  const steps=Math.max(3,(len/20)|0); let a=ang,X=x,Y=y;
+  for(let s=0;s<steps;s++){
+    a+=rr(-0.05,0.05); const sl=len/steps;
+    const nx=X+Math.sin(a)*sl, ny=Y+(down?Math.cos(a)*sl:-Math.cos(a)*sl);
+    if(!down && ny<70) break; if(down && ny>H-10) break;
+    segs.push([X,Y,nx,ny,w,hue,order]); X=nx; Y=ny;
+  }
+  const nc=rnd()<0.25?3:2;
+  for(let k=0;k<nc;k++){
+    const spread=rr(0.3,0.62), na=ang+(k-(nc-1)/2)*spread+rr(-0.1,0.1);
+    grow(X,Y,na,len*rr(0.7,0.82),Math.max(.4,w*rr(.62,.72)),depth-1,Math.min(1,hue+rr(-.02,.12)),down, Math.min(1,order+rr(.1,.18)));
+  }
+}
+// trunk strands (intertwined) — order 0..0.18
+(function trunk(){
+  const n=8;
+  for(let i=0;i<n;i++){
+    const hue=(i%2===0)?0.04:0.5, baseOff=(i-(n-1)/2)*7, amp=7+(i%3)*5, ph=i*0.8;
+    let px=cx+baseOff, py=baseY; const ST=26;
+    for(let s=1;s<=ST;s++){ const t=s/ST, y=baseY+(forkY-baseY)*t, conv=1-t;
+      const x=cx+baseOff*conv+Math.sin(t*Math.PI*1.5+ph)*amp*(.35+.65*t); const w=7-(7-1.8)*t;
+      segs.push([px,py,x,y,w,hue, t*0.18]); px=x; py=y; }
+  }
+})();
+// crown boughs — 4 branches (one per ecosystem branch) + fillers; order .18..1
+const LIMB=[-0.95,-0.5,0.5,0.95], BR_HUE=[0.0,0.32,0.5,0.85];
+LIMB.forEach((a,i)=>{ grow(cx,forkY,a,250,5,6,BR_HUE[i],false,0.2); });
+[[-0.18,0.1],[0.18,0.6],[0,0.4],[-0.7,0.2],[0.7,0.75]].forEach(f=>grow(cx,forkY,f[0],200,3.5,5,f[1],false,0.22));
+// roots — order .1..1 downward
+for(let k=0;k<8;k++) grow(cx,baseY+2,(k-3.5)*0.34,150,5,5,(k%3===0?0.5:0.02),true,0.15);
+
+// sort by order so "grow" reveal is bottom-up / inside-out
+segs.sort((a,b)=>a[6]-b[6]);
+
+function buildSVG(){
+  const S=[`<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${W} ${H}" preserveAspectRatio="xMidYMid slice">`];
+  S.push(`<defs>
+    <radialGradient id="bg" cx="50%" cy="34%" r="80%"><stop offset="0%" stop-color="#120c0a"/><stop offset="60%" stop-color="#0a0706"/><stop offset="100%" stop-color="#070506"/></radialGradient>
+    <filter id="b" x="-40%" y="-40%" width="180%" height="180%"><feGaussianBlur stdDeviation="4.5"/></filter>
+  </defs>`);
+  S.push(`<rect width="${W}" height="${H}" fill="url(#bg)"/>`);
+  S.push(`<ellipse cx="${cx}" cy="${forkY-20}" rx="520" ry="380" fill="#1a120c" opacity=".5" filter="url(#b)"/>`);
+  let g=segs.map(s=>`<line x1="${s[0].toFixed(1)}" y1="${s[1].toFixed(1)}" x2="${s[2].toFixed(1)}" y2="${s[3].toFixed(1)}" stroke="${mix3(s[5])}" stroke-width="WIDTHMULT" stroke-linecap="round" data-o="${s[6].toFixed(3)}" class="seg"/>`).join("");
+  // two passes: glow + crisp
+  S.push(`<g id="glow" filter="url(#b)" opacity=".85">`+segs.map(s=>`<line x1="${s[0].toFixed(1)}" y1="${s[1].toFixed(1)}" x2="${s[2].toFixed(1)}" y2="${s[3].toFixed(1)}" stroke="${mix3(s[5])}" stroke-width="${(s[4]*2.2).toFixed(2)}" stroke-linecap="round" data-o="${s[6].toFixed(3)}" class="seg"/>`).join("")+`</g>`);
+  S.push(`<g id="crisp">`+segs.map(s=>`<line x1="${s[0].toFixed(1)}" y1="${s[1].toFixed(1)}" x2="${s[2].toFixed(1)}" y2="${s[3].toFixed(1)}" stroke="${mix3(s[5])}" stroke-width="${s[4].toFixed(2)}" stroke-opacity=".95" stroke-linecap="round" data-o="${s[6].toFixed(3)}" class="seg"/>`).join("")+`</g>`);
+  // glowing seed/core at trunk base
+  S.push(`<circle cx="${cx}" cy="${baseY}" r="46" fill="#a83232" opacity=".22" filter="url(#b)"/>`);
+  S.push(`<circle id="seed" cx="${cx}" cy="${baseY}" r="13" fill="#f3d27a"/>`);
+  S.push(`</svg>`);
+  return S.join("");
+}
+document.getElementById("treeWrap").innerHTML=buildSVG();
+
+/* reveal segments as you scroll: a segment is visible once scrollProgress >= its order */
+const segEls=[...document.querySelectorAll(".seg")];
+const railFill=document.getElementById("railFill");
+function onScroll(){
+  const sc=document.documentElement.scrollTop||document.body.scrollTop;
+  const max=(document.documentElement.scrollHeight-window.innerHeight)||1;
+  const p=Math.min(1,Math.max(0,sc/max));
+  // tree grows: reveal segments whose order <= grown threshold (ease)
+  const grown=Math.min(1, p*1.25+0.06);
+  for(const el of segEls){ const o=+el.getAttribute("data-o"); el.style.opacity = o<=grown ? "" : "0"; }
+  // parallax drift
+  document.getElementById("treeWrap").style.transform = `translateY(${(-p*60).toFixed(1)}px) scale(${(1+p*0.06).toFixed(3)})`;
+  // rail
+  railFill.style.height=(p*100)+"%";
+  document.querySelectorAll(".rdot").forEach((d,i)=>{ const t=i/(railTargets.length-1); d.classList.toggle("on", p>=t-0.06); });
+}
+segEls.forEach(e=>e.style.transition="opacity .5s ease");
+
+/* section reveals */
+const io=new IntersectionObserver((ents)=>{ents.forEach(e=>{ if(e.isIntersecting) e.target.classList.add("in"); });},{threshold:.18});
+document.querySelectorAll(".reveal").forEach(el=>io.observe(el));
+
+/* candlesticks build */
+(function candles(){ const row=document.getElementById("candleRow"); let y=60;
+  for(let i=0;i<22;i++){ const up=Math.random()>0.42; y+=up?-rr(4,16):rr(2,12); y=Math.max(20,Math.min(110,y));
+    const body=rr(14,46), wick=body+rr(8,22), d=document.createElement("div");
+    d.className="candle "+(up?"up":"dn");
+    d.innerHTML=`<i style="height:${wick}px;bottom:${y-8}px"></i><b style="height:${body}px;margin-bottom:${y}px"></b>`;
+    row.appendChild(d);
+  }
+})();
+
+/* rail dots = section anchors */
+const railTargets=["hero","philosophy","ecosystem","bots","collections","corefuel","academy","join"];
+const railDots=document.getElementById("railDots");
+railTargets.forEach((id,i)=>{ const d=document.createElement("div"); d.className="rdot"; d.style.top=(8+i*(100/ (railTargets.length-1)))+"%";
+  if(i===railTargets.length-1) d.style.top="92%";
+  d.style.top=(8 + (i*(84/(railTargets.length-1))))+"%";
+  d.title=id; d.onclick=()=>document.getElementById(id).scrollIntoView({behavior:"smooth"}); railDots.appendChild(d); });
+
+window.addEventListener("scroll",onScroll,{passive:true});
+window.addEventListener("resize",onScroll); onScroll();
+</script>
+</body>
+</html>
