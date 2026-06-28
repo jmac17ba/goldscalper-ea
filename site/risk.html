@@ -1,0 +1,83 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1"/>
+<title>Risk Disclosure | BAD APPLE</title>
+<style>
+  :root{ --black:#070506; --ink:#f3ece0; --mut:#9a9088; --gold:#c9a84c; --oxblood:#7d1f1f; --ox2:#a83232; --line:#221b18; }
+  *{box-sizing:border-box; margin:0; padding:0}
+  body{ background:var(--black); color:var(--ink); font-family:"Helvetica Neue",Helvetica,Arial,sans-serif; line-height:1.7; }
+  h1,h2{ font-family:"Georgia","Times New Roman",serif; }
+  a{ color:var(--gold); }
+  header{ display:flex; align-items:center; padding:16px 28px; border-bottom:1px solid var(--line); }
+  header .logo{ font-family:Georgia,serif; font-weight:700; letter-spacing:4px; font-size:17px; }
+  header .logo a{ color:var(--ink); text-decoration:none; } header .logo b{ color:var(--gold); }
+  header .nav{ margin-left:auto; display:flex; gap:22px; font-size:12.5px; letter-spacing:1.5px; text-transform:uppercase; }
+  header .nav a{ color:var(--mut); text-decoration:none; } header .nav a:hover{ color:var(--gold); }
+  .wrap{ max-width:760px; margin:0 auto; padding:56px 28px 80px; }
+  .eyebrow{ color:var(--gold); letter-spacing:5px; text-transform:uppercase; font-size:12px; }
+  h1{ font-size:clamp(34px,6vw,56px); margin:14px 0 8px; }
+  .lead{ color:var(--ink); font-size:18px; margin-bottom:8px; }
+  h2{ font-size:22px; margin:34px 0 10px; color:#fff; }
+  p, li{ color:var(--mut); margin-bottom:12px; }
+  ul{ margin:0 0 12px 20px; }
+  .callout{ background:#160a0a; border:1px solid #3a1414; border-left:3px solid var(--ox2); border-radius:6px; padding:20px 22px; margin:24px 0; color:#e8c9c4; }
+  .callout b{ color:#ff9a8a; }
+  footer{ text-align:center; padding:40px 24px; border-top:1px solid var(--line); color:var(--mut); font-size:12.5px; }
+  footer .lock{ font-family:Georgia,serif; letter-spacing:4px; color:var(--gold); }
+</style>
+</head>
+<body>
+<header>
+  <div class="logo"><a href="index.html"><b>🍎</b> BAD APPLE</a></div>
+  <nav class="nav"><a href="index.html">Home</a><a href="bots.html">Bots</a></nav>
+</header>
+
+<div class="wrap">
+  <div class="eyebrow">Risk Disclosure</div>
+  <h1>Read this first.</h1>
+  <p class="lead">Honesty is the brand. Here is the plain truth about trading with our bots.</p>
+
+  <div class="callout">
+    <b>No profit is guaranteed. We never promise returns.</b> Bad Apple bots are tools for education and disciplined participation — not get-rich-quick schemes. Trading carries a real risk of losing money, including the possibility of losing more than you expected in fast-moving markets.
+  </div>
+
+  <h2>Trading is high-risk</h2>
+  <p>Trading gold (XAUUSD) and foreign exchange is high-risk and speculative. Prices move fast and unpredictably. You should never trade with money you cannot afford to lose, and you should understand that past performance — including any backtest — does not predict future results.</p>
+
+  <h2>How our bots can lose</h2>
+  <p>Chakka and Quasheba use a breakout entry followed by a <strong>grid / Fibonacci recovery basket</strong>. This method adds positions on adverse moves to try to recover at a combined take-profit. In a strong, sustained trend that never retraces, a recovery basket can:</p>
+  <ul>
+    <li>draw down heavily on your account balance,</li>
+    <li>reach the drawdown guard and close at a realized loss, or</li>
+    <li>— if you disable the guard — continue all the way to a margin call.</li>
+  </ul>
+  <p>The drawdown guard reduces but does not eliminate this risk. No automated strategy can remove the risk of loss.</p>
+
+  <h2>You are in control — and responsible</h2>
+  <ul>
+    <li>The bot runs on <strong>your own</strong> MetaTrader 5 / broker account. You keep custody of your funds; the bot only executes orders.</li>
+    <li>You choose the settings (levels, lot sizes, drawdown guard %). Your configuration is your responsibility.</li>
+    <li>Always <strong>test on a demo account</strong> and in the Strategy Tester before risking real funds.</li>
+  </ul>
+
+  <h2>Not financial advice</h2>
+  <p>Nothing on this site or in our products, content, or community is financial, investment, tax, or legal advice. We are an education-first brand. Decisions you make with our tools are your own. If you need advice, consult a licensed professional.</p>
+
+  <h2>Education, not promises</h2>
+  <p>Our mission is financial literacy: teaching you how markets actually move so you can think for yourself. That mission only works if we are honest. So we will always tell you the risk, and we will never promise you returns.</p>
+
+  <div class="callout">
+    By using a Bad Apple bot you acknowledge that you understand these risks, that you are trading with money you can afford to lose, and that Bad Apple is not liable for your trading losses.
+  </div>
+
+  <p style="margin-top:24px"><a href="bots.html">← Back to the bots</a></p>
+</div>
+
+<footer>
+  <div class="lock">BAD APPLE • CHAKKA • QUASHEBA • COREFUEL</div>
+  <div style="margin-top:8px">Fallen from the tree. Sharper for the fall.</div>
+</footer>
+</body>
+</html>
