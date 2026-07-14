@@ -29,18 +29,27 @@ Upstream project: https://github.com/Crosstalk-Solutions/project-nomad (Apache 2
 sudo bash /opt/project-nomad/start_nomad.sh
 ```
 
-### Phone / LAN access (run in ADMIN PowerShell; re-run after reboots — WSL IP changes)
+### Phone / LAN access — WORKING SETUP (confirmed 2026-07-14)
+
+Phone URL (same Wi-Fi): **http://192.168.50.229:8080**
+
+The forward targets Windows loopback (127.0.0.1), NOT the WSL IP — WSL's
+`hostname -I` output gets mangled when captured into a PowerShell variable
+(`$wslip` came back as "A"), and loopback survives WSL IP changes anyway.
+Firewall rule "NOMAD 8080" (TCP in, allow, port 8080) already added; iphlpsvc
+set to Automatic.
+
+If phone access breaks (e.g. laptop's Wi-Fi IP changed), run in ADMIN PowerShell —
+substitute the current laptop IPv4 from `ipconfig | findstr IPv4` (the 192.168.x.x one):
 
 ```powershell
-$wslip = (wsl -d Ubuntu hostname -I).Trim().Split(" ")[0]
-netsh interface portproxy delete v4tov4 listenport=8080 listenaddress=0.0.0.0
-netsh interface portproxy add v4tov4 listenport=8080 listenaddress=0.0.0.0 connectport=8080 connectaddress=$wslip
-netsh advfirewall firewall add rule name="NOMAD 8080" dir=in action=allow protocol=TCP localport=8080
-ipconfig | findstr IPv4
+netsh interface portproxy reset
+netsh interface portproxy add v4tov4 listenaddress=192.168.50.229 listenport=8080 connectaddress=127.0.0.1 connectport=8080
+curl.exe -s -o NUL -w "HTTP status: %{http_code}" http://192.168.50.229:8080
 ```
 
-Then on the phone (same Wi-Fi): `http://<laptop IPv4>:8080`.
-If it fails: check Windows network profile isn't "Public", and router AP-isolation is off.
+`HTTP status: 200` = working. Other checks if not: Windows network profile must be
+Private (not Public); router AP-isolation off; NOMAD actually running (localhost:8080).
 
 ---
 
